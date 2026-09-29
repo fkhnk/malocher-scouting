@@ -8,9 +8,9 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics.pairwise import cosine_similarity
 from google import genai
 
-st.set_page_config(page_title="Malocher Scouting", layout="wide")
+st.set_page_config(page_title="Malocher Scouting ⚒️", layout="wide")
 
-st.title("Malocher Scouting")
+st.title("Malocher Scouting ⚒️")
 st.markdown("Universelle, datengestützte Spielersuche für Profivereine powered by **Gemini & Cosine Similarity**")
 
 # API Key sichern (aus Secrets oder direkt)
