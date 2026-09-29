@@ -23,15 +23,18 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("⚒️ Malocher Scouting")
+st.title("Malocher Scouting ⚒️")
 st.markdown(
     "Universelle, datengestützte Spielersuche & Recommender System powered by"
     " **Gemini & Cosine Similarity**"
 )
 
 # API Key sichern (aus Secrets oder direkt)
-if "GEMINI_API_KEY" in st.secrets:
-  GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
+
+if not GEMINI_API_KEY:
+  st.error("GEMINI_API_KEY fehlt. Bitte in Streamlit unter Settings → Secrets hinterlegen.")
+  st.stop()
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
@@ -404,122 +407,122 @@ if "params" in st.session_state:
       unsafe_allow_html=True,
   )
 
-with col2:
-  st.subheader("🥊 Direct Head-to-Head Spieler-Vergleich")
-  player_list = top_matches["long_name"].tolist()
-  p1_selected = st.selectbox("Spieler 1 auswählen:", player_list, index=0)
-  p2_selected = st.selectbox(
-      "Spieler 2 auswählen:",
-      player_list,
-      index=min(1, len(player_list) - 1),
-  )
+    with col2:
+      st.subheader("🥊 Direct Head-to-Head Spieler-Vergleich")
+      player_list = top_matches["long_name"].tolist()
+      p1_selected = st.selectbox("Spieler 1 auswählen:", player_list, index=0)
+      p2_selected = st.selectbox(
+          "Spieler 2 auswählen:",
+          player_list,
+          index=min(1, len(player_list) - 1),
+      )
 
-  if p1_selected and p2_selected:
-    p1_data = df[df["long_name"] == p1_selected].iloc[0]
-    p2_data = df[df["long_name"] == p2_selected].iloc[0]
+      if p1_selected and p2_selected:
+        p1_data = df[df["long_name"] == p1_selected].iloc[0]
+        p2_data = df[df["long_name"] == p2_selected].iloc[0]
 
-    german_skill_labels = [
-        SKILL_MAP[col].upper() for col in skill_columns
-    ]
-    categories = skill_columns
+        german_skill_labels = [
+            SKILL_MAP[col].upper() for col in skill_columns
+        ]
+        categories = skill_columns
 
-    v1 = p1_data[categories].values.tolist() + [
-        p1_data[categories].values[0]
-    ]
-    v2 = p2_data[categories].values.tolist() + [
-        p2_data[categories].values[0]
-    ]
-    angles = [
-        n / float(len(categories)) * 2 * np.pi
-        for n in range(len(categories))
-    ] + [0]
+        v1 = p1_data[categories].values.tolist() + [
+            p1_data[categories].values[0]
+        ]
+        v2 = p2_data[categories].values.tolist() + [
+            p2_data[categories].values[0]
+        ]
+        angles = [
+            n / float(len(categories)) * 2 * np.pi
+            for n in range(len(categories))
+        ] + [0]
 
-    fig, ax = plt.subplots(figsize=(5, 5), subplot_kw=dict(polar=True))
-    fig.patch.set_facecolor("#0e1117")
-    ax.set_facecolor("#161b26")
-    ax.tick_params(colors="white")
+        fig, ax = plt.subplots(figsize=(5, 5), subplot_kw=dict(polar=True))
+        fig.patch.set_facecolor("#0e1117")
+        ax.set_facecolor("#161b26")
+        ax.tick_params(colors="white")
 
-    plt.xticks(angles[:-1], german_skill_labels, color="white")
-    ax.plot(angles, v1, label=p1_selected, color="#004D98", linewidth=2)
-    ax.plot(angles, v2, label=p2_selected, color="#E30613", linewidth=2)
-    ax.fill(angles, v1, alpha=0.15, color="#004D98")
-    ax.fill(angles, v2, alpha=0.15, color="#E30613")
-    plt.legend(loc="lower right")
-    st.pyplot(fig)
+        plt.xticks(angles[:-1], german_skill_labels, color="white")
+        ax.plot(angles, v1, label=p1_selected, color="#004D98", linewidth=2)
+        ax.plot(angles, v2, label=p2_selected, color="#E30613", linewidth=2)
+        ax.fill(angles, v1, alpha=0.15, color="#004D98")
+        ax.fill(angles, v2, alpha=0.15, color="#E30613")
+        plt.legend(loc="lower right")
+        st.pyplot(fig)
 
-st.subheader(f"📝 Scouting-Bericht für {detected_club}")
-report_prompt = f"""
-    Du bist Chef-Scout bei {detected_club}. 
-    Anfrage des Managements: '{user_prompt}'. 
+    st.subheader(f"📝 Scouting-Bericht für {detected_club}")
+    report_prompt = f"""
+        Du bist Chef-Scout bei {detected_club}. 
+        Anfrage des Managements: '{user_prompt}'. 
     
-    Hier sind die datenbasierten Top-Kandidaten:
-    {top_matches.to_string()}
+        Hier sind die datenbasierten Top-Kandidaten:
+        {top_matches.to_string()}
     
-    Schreibe einen professionellen, fundierten Scouting-Bericht direkt an die Vereinsführung.
-    Gehe explizit auf den ⚒️ Malocher-Index (Physis/Einsatz) und den 💎 ROI-Faktor (Entwicklungspotenzial) ein.
-    """
-rep_text = None
-for m in FALLBACK_MODELS:
-  try:
-    rep_text = client.models.generate_content(
-        model=m, contents=report_prompt
-    ).text
-    if rep_text:
-      break
-  except Exception:
-    continue
-
-if rep_text:
-  st.markdown(rep_text)
-  try:
-    pdf_bytes = create_pdf_report(
-        detected_club, user_prompt, rep_text, top_matches
-    )
-    st.download_button(
-        label="📄 Scouting-Bericht als PDF herunterladen",
-        data=bytes(pdf_bytes),
-        file_name=f"Scouting_Bericht_{detected_club}.pdf",
-        mime="application/pdf",
-    )
-  except Exception:
-    pass
-
-st.divider()
-st.subheader("💬 Frage den Chef-Scout")
-
-if "chat_history" not in st.session_state:
-  st.session_state["chat_history"] = []
-
-for q, a in st.session_state["chat_history"]:
-  st.chat_message("user").write(q)
-  st.chat_message("assistant").write(a)
-
-user_question = st.chat_input(
-    "z. B. Warum ist der Top-Treffer besser für Konterfußball geeignet?"
-)
-
-if user_question:
-  st.chat_message("user").write(user_question)
-  chat_prompt = f"""
-        Du bist der Chef-Scout von {detected_club}.
-        Der Manager stellt dir eine Nachfrage zu den aktuell vorgeschlagenen Kandidaten:
-        Top-Kandidaten: {top_matches.to_string()}
-        
-        Frage des Managers: '{user_question}'
-        
-        Antworte kurz, präzise, fachlich kompetent und praxisnah.
+        Schreibe einen professionellen, fundierten Scouting-Bericht direkt an die Vereinsführung.
+        Gehe explizit auf den ⚒️ Malocher-Index (Physis/Einsatz) und den 💎 ROI-Faktor (Entwicklungspotenzial) ein.
         """
-  chat_reply = None
-  for m in FALLBACK_MODELS:
-    try:
-      chat_reply = client.models.generate_content(
-          model=m, contents=chat_prompt
-      ).text
-      if chat_reply:
-        break
-    except Exception:
-      continue
+    rep_text = None
+    for m in FALLBACK_MODELS:
+      try:
+        rep_text = client.models.generate_content(
+            model=m, contents=report_prompt
+        ).text
+        if rep_text:
+          break
+      except Exception:
+        continue
 
-  if chat_reply:
-    st.chat_message("assistant").write(chat_reply)
-    st.session_state["chat_history"].append((user_question, chat_reply))
+    if rep_text:
+      st.markdown(rep_text)
+      try:
+        pdf_bytes = create_pdf_report(
+            detected_club, user_prompt, rep_text, top_matches
+        )
+        st.download_button(
+            label="📄 Scouting-Bericht als PDF herunterladen",
+            data=bytes(pdf_bytes),
+            file_name=f"Scouting_Bericht_{detected_club}.pdf",
+            mime="application/pdf",
+        )
+      except Exception:
+        pass
+
+    st.divider()
+    st.subheader("💬 Frage den Chef-Scout")
+
+    if "chat_history" not in st.session_state:
+      st.session_state["chat_history"] = []
+
+    for q, a in st.session_state["chat_history"]:
+      st.chat_message("user").write(q)
+      st.chat_message("assistant").write(a)
+
+    user_question = st.chat_input(
+        "z. B. Warum ist der Top-Treffer besser für Konterfußball geeignet?"
+    )
+
+    if user_question:
+      st.chat_message("user").write(user_question)
+      chat_prompt = f"""
+            Du bist der Chef-Scout von {detected_club}.
+            Der Manager stellt dir eine Nachfrage zu den aktuell vorgeschlagenen Kandidaten:
+            Top-Kandidaten: {top_matches.to_string()}
+        
+            Frage des Managers: '{user_question}'
+        
+            Antworte kurz, präzise, fachlich kompetent und praxisnah.
+            """
+      chat_reply = None
+      for m in FALLBACK_MODELS:
+        try:
+          chat_reply = client.models.generate_content(
+              model=m, contents=chat_prompt
+          ).text
+          if chat_reply:
+            break
+        except Exception:
+          continue
+
+      if chat_reply:
+        st.chat_message("assistant").write(chat_reply)
+        st.session_state["chat_history"].append((user_question, chat_reply))
