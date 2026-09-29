@@ -310,20 +310,14 @@ def _pdf_safe_text(value):
         .replace("\u00a0", " ")
     )
 
-    # Helvetica in the built-in FPDF font set is Latin-1 only.
     text = text.encode("latin-1", "replace").decode("latin-1")
 
-    # FPDF2 can fail when one token (URL, identifier, markdown artifact, etc.)
-    # is wider than the complete printable area. Insert safe breakpoints.
     safe_lines = []
     for line in text.splitlines() or [""]:
         if not line:
             safe_lines.append("")
             continue
 
-        # Split very long non-space tokens into chunks. The inserted newline
-        # makes the normal WORD wrapper deterministic and avoids the
-        # "Not enough horizontal space to render a single character" error.
         parts = re.split(r"(\s+)", line)
         rebuilt = ""
         for part in parts:
@@ -420,10 +414,14 @@ st.sidebar.markdown(
 )
 
 malocher_mode = st.sidebar.checkbox(
-    "⚒️ Malocher-Fokus erzwingen (Index ≥ 70)", value=False
+    "⚒️ Malocher-Fokus erzwingen (Index ≥ 70)", 
+    value=False,
+    help="Filtert ausschließlich Spieler mit einem Malocher-Index von 70 oder höher."
 )
 schnaeppchen_mode = st.sidebar.checkbox(
-    "💎 Nur Schnäppchen & Talente (ROI ≥ 1,5)", value=False
+    "💎 Nur Schnäppchen & Talente (ROI ≥ 1,5)", 
+    value=False,
+    help="Filtert ausschließlich Spieler mit einem herausragenden ROI-Score von 1,5 oder höher."
 )
 
 override_max_value = st.sidebar.slider(
@@ -432,18 +430,21 @@ override_max_value = st.sidebar.slider(
     max_value=100_000_000,
     value=15_000_000,
     step=500_000,
+    help="Obergrenze für den aktuellen Marktwert der Spieler."
 )
 override_max_age = st.sidebar.slider(
     "Maximales Alter",
     min_value=16,
     max_value=40,
     value=28,
+    help="Höchstalter der zu berücksichtigenden Spieler."
 )
 override_min_potential = st.sidebar.slider(
     "Mindest-Potenzial (POT)",
     min_value=60,
     max_value=95,
     value=75,
+    help="Mindestwert für das erwartete Maximalpotenzial (POT)."
 )
 
 st.sidebar.divider()
@@ -710,14 +711,27 @@ if "params" in st.session_state:
         top_player = top_matches.iloc[0]
         st.markdown("### 🏆 Top-Empfehlung")
         m1, m2, m3, m4, m5 = st.columns(5)
-        m1.metric("Spieler", top_player["long_name"])
+        m1.metric("Spieler", top_player["long_name"], help="Name des empfohlenen Top-Kandidaten")
         m2.metric(
             "OVR / POT",
             f"{int(top_player['overall'])} / {int(top_player['potential'])}",
+            help="OVR = Overall Rating (Aktuelle Gesamtstärke) | POT = Potential (Erwartete maximale Gesamtstärke)"
         )
-        m3.metric("🎯 Tactical Fit", f"{top_player['tactical_fit']:.1f}")
-        m4.metric("⚒️ Malocher-Index", f"{top_player['malocher_index']:.1f}")
-        m5.metric("💎 ROI-Faktor", f"{top_player['roi_score']:.2f}")
+        m3.metric(
+            "🎯 Tactical Fit", 
+            f"{top_player['tactical_fit']:.1f}", 
+            help="Taktische Passung (0-100) der Spieler-Skills zum erkannten Anforderungsprofil."
+        )
+        m4.metric(
+            "⚒️ Malocher-Index", 
+            f"{top_player['malocher_index']:.1f}", 
+            help="Arbeits- und Einsatzindex, berechnet aus: Physis (45%) + Defensive (35%) + Tempo (20%)."
+        )
+        m5.metric(
+            "💎 ROI-Faktor", 
+            f"{top_player['roi_score']:.2f}", 
+            help="Return on Investment: Verhältnis aus Entwicklungspotenzial (POT - OVR) zum aktuellen Marktwert in Mio. €."
+        )
 
         # -----------------------------------------------------
         # Explainability
@@ -795,7 +809,26 @@ if "params" in st.session_state:
                 "scouting_score": "Scouting Score",
             }
         )
-        st.dataframe(table_df, use_container_width=True, hide_index=True)
+        
+        # DataFrame mit Tooltips (i-Symbolen) über column_config
+        st.dataframe(
+            table_df, 
+            column_config={
+                "Spieler": st.column_config.TextColumn("Spieler", help="Vollständiger Name des Spielers"),
+                "Alter": st.column_config.NumberColumn("Alter", help="Alter in Jahren"),
+                "Position": st.column_config.TextColumn("Position", help="Spielpositionen (z.B. CB, CDM, ST)"),
+                "OVR": st.column_config.NumberColumn("OVR", help="Overall Rating: Aktuelle Gesamtstärke (0-99)"),
+                "POT": st.column_config.NumberColumn("POT", help="Potential: Erwartete maximale Gesamtstärke (0-99)"),
+                "Marktwert": st.column_config.TextColumn("Marktwert", help="Aktueller Marktwert in Millionen Euro"),
+                "🎯 Tactical Fit": st.column_config.NumberColumn("🎯 Tactical Fit", help="Taktische Passung (0-100) zum Anforderungsprofil"),
+                "⚒️ Malocher": st.column_config.NumberColumn("⚒️️ Malocher", help="Malocher-Index: Physis (45%) + Defensive (35%) + Tempo (20%)"),
+                "💎 ROI": st.column_config.NumberColumn("💎 ROI", help="Return on Investment: Potenzial-Wachstum geteilt durch Marktwert in Mio. €"),
+                "Match-Score": st.column_config.NumberColumn("Match-Score", help="Ähnlichkeit in % zu einem gesuchten Referenzspieler (Cosine Similarity)"),
+                "Scouting Score": st.column_config.NumberColumn("Scouting Score", help="Gesamt-Priorisierungsscore der KI aus Tactical Fit, Potenzial, ROI und OVR"),
+            },
+            use_container_width=True, 
+            hide_index=True
+        )
 
         st.caption(
             "Scouting Score kombiniert Tactical Fit, Ähnlichkeit (falls vorhanden), "
@@ -856,7 +889,20 @@ if "params" in st.session_state:
                     "roi_score": "ROI",
                 }
             )
-            st.dataframe(hg_display, use_container_width=True, hide_index=True)
+            st.dataframe(
+                hg_display, 
+                column_config={
+                    "Spieler": st.column_config.TextColumn("Spieler", help="Name des Talents"),
+                    "Alter": st.column_config.NumberColumn("Alter", help="Alter in Jahren"),
+                    "OVR": st.column_config.NumberColumn("OVR", help="Aktuelle Gesamtstärke (Overall)"),
+                    "POT": st.column_config.NumberColumn("POT", help="Erwartetes Maximalpotenzial"),
+                    "Marktwert": st.column_config.TextColumn("Marktwert", help="Aktueller Marktwert in Mio. €"),
+                    "Tactical Fit": st.column_config.NumberColumn("Tactical Fit", help="Taktische Passung (0-100)"),
+                    "ROI": st.column_config.NumberColumn("ROI", help="Verhältnis von Potenzialwachstum zu Marktwert"),
+                },
+                use_container_width=True, 
+                hide_index=True
+            )
 
         # -----------------------------------------------------
         # Multi-player Scouting Battle
@@ -896,6 +942,7 @@ if "params" in st.session_state:
                 "Marktwert (€)",
             ]
             st.dataframe(compare_df, use_container_width=True)
+            st.caption("ℹ️ **Kennzahlen-Erklärung:** **OVR** = Aktuelle Stärke | **POT** = Potenzial | **Tactical Fit** = Taktische Passung | **Malocher-Index** = Physis/Defensive/Tempo-Wert | **ROI-Faktor** = Potenzialwachstum pro Mio. € Marktwert.")
 
             radar_names = selected_players[:5]
             categories = skill_columns
