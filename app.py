@@ -9,11 +9,21 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import MinMaxScaler
 import streamlit as st
 
+# ---------------------------------------------------------
+# Page Config & Custom Styling (Königsblau & Dark Theme)
+# ---------------------------------------------------------
 st.set_page_config(
     page_title="Malocher Scouting ⚒️", layout="wide", page_icon="⚒️"
 )
 
-st.title("Malocher Scouting ⚒️")
+st.markdown(
+    """
+    
+    """,
+    unsafe_allow_html=True,
+)
+
+st.title("⚒️ Malocher Scouting")
 st.markdown(
     "Universelle, datengestützte Spielersuche & Recommender System powered by **Gemini & Cosine Similarity**"
 )
@@ -55,12 +65,12 @@ def load_data():
   ]
   df[skill_columns] = df[skill_columns].fillna(df[skill_columns].mean())
 
-  # 1. Feature Engineering: Malocher-Index (Physis 45%, Defensive 35%, Tempo 20%)
+  # Feature Engineering: Malocher-Index (Physis 45%, Defensive 35%, Tempo 20%)
   df["malocher_index"] = np.round(
       (df["physic"] * 0.45 + df["defending"] * 0.35 + df["pace"] * 0.20), 1
   )
 
-  # 2. Feature Engineering: Entwicklungspotenzial & ROI-Faktor
+  # Feature Engineering: Entwicklungspotenzial & ROI-Faktor
   df["potential_growth"] = df["potential"] - df["overall"]
   val_in_mio = np.maximum(df["value_eur"] / 1_000_000, 0.1)
   df["roi_score"] = np.round(df["potential_growth"] / val_in_mio, 2)
@@ -76,25 +86,21 @@ def create_pdf_report(club_name, query, report_text, top_matches_df):
   pdf = FPDF()
   pdf.add_page()
 
-  # Header
   pdf.set_font("Helvetica", "B", 18)
-  pdf.cell(0, 10, f"MALOCHER SCOUTING - BERICHT", ln=True, align="C")
+  pdf.cell(0, 10, "MALOCHER SCOUTING - BERICHT", ln=True, align="C")
   pdf.set_font("Helvetica", "I", 12)
   pdf.cell(0, 8, f"Verein: {club_name}", ln=True, align="C")
   pdf.line(10, 30, 200, 30)
   pdf.ln(8)
 
-  # Anfrage
   pdf.set_font("Helvetica", "B", 11)
   pdf.cell(0, 7, f"Anforderungsprofil: {query}", ln=True)
   pdf.ln(4)
 
-  # KI-Bericht Text
   pdf.set_font("Helvetica", "B", 13)
   pdf.cell(0, 8, "Chef-Scout Analyse:", ln=True)
   pdf.set_font("Helvetica", "", 10)
 
-  # UTF-8 Säuberung für FPDF
   clean_text = (
       report_text.replace("**", "")
       .replace("##", "")
@@ -144,62 +150,70 @@ user_prompt = st.text_input(
 )
 
 if st.button("🔍 Scouting-Analyse starten"):
-  with st.spinner(
-      "Malocher Scouting analysiert das Vereinsprofil und durchsucht die"
-      " Datenbank..."
-  ):
+  # Smart Prompt Guard: Unvollständige/Vage Prompts abfangen
+  if len(user_prompt.strip().split()) < 3:
+    st.warning(
+        "⚠️ Deine Anfrage ist sehr kurz! Bitte gib mindestens eine Position,"
+        " eine Anforderung oder einen Wunschverein an (z. B. 'Schneller Flügel"
+        " für Dortmund')."
+    )
+  else:
+    with st.spinner(
+        "Malocher Scouting analysiert das Vereinsprofil und durchsucht die"
+        " Datenbank..."
+    ):
+      extraction_prompt = f"""
+            Du bist ein weltklasse Chef-Scout im Profifußball. Extrahiere die Parameter als JSON aus der Anfrage.
+            
+            WICHTIG - DYNAMISCHE VEREINSERKENNUNG & IMPLIZITE CLUB-PROFILE:
+            Analysiere, welcher Verein in der Anfrage genannt wird. Falls keine konkreten Zahlen genannt werden:
+            - Spitzenvereine (Bayern, BVB, Leipzig, Leverkusen): max_value_eur: 50000000, min_overall: 78, min_potential: 82.
+            - Ambitionierte Bundesligisten (Frankfurt, Stuttgart, Wolfsburg, Gladbach, Freiburg): max_value_eur: 15000000, min_potential: 78.
+            - Mittelfeld / 2. Liga / Traditionsvereine (Schalke, Köln, HSV, Hertha, Bochum, Mainz, St. Pauli): max_value_eur: 4000000, max_age: 24, min_potential: 75.
 
-    extraction_prompt = f"""
-        Du bist ein weltklasse Chef-Scout im Profifußball. Extrahiere die Parameter als JSON aus der Anfrage.
-        
-        WICHTIG - DYNAMISCHE VEREINSERKENNUNG & IMPLIZITE CLUB-PROFILE:
-        Analysiere, welcher Verein in der Anfrage genannt wird. Falls keine konkreten Zahlen genannt werden:
-        - Spitzenvereine (Bayern, BVB, Leipzig, Leverkusen): max_value_eur: 50000000, min_overall: 78, min_potential: 82.
-        - Ambitionierte Bundesligisten (Frankfurt, Stuttgart, Wolfsburg, Gladbach, Freiburg): max_value_eur: 15000000, min_potential: 78.
-        - Mittelfeld / 2. Liga / Traditionsvereine (Schalke, Köln, HSV, Hertha, Bochum, Mainz, St. Pauli): max_value_eur: 4000000, max_age: 24, min_potential: 75.
+            POSITIONSMAPPING (Deutsch/Jargon -> EA FC Englisch):
+            - Malocher / Abräumer / Sechser / ZDM / DM -> 'CDM'
+            - Achter / ZM -> 'CM'
+            - Zehner / Spielmacher / ZOM -> 'CAM'
+            - Innenverteidiger / IV -> 'CB'
+            - Außenverteidiger / LV / RV -> 'LB' bzw. 'RB'
+            - Stürmer / MS / Knipser -> 'ST'
+            - Flügelspieler / LA / RA -> 'LW' bzw. 'RW'
 
-        POSITIONSMAPPING (Deutsch/Jargon -> EA FC Englisch):
-        - Malocher / Abräumer / Sechser / ZDM / DM -> 'CDM'
-        - Achter / ZM -> 'CM'
-        - Zehner / Spielmacher / ZOM -> 'CAM'
-        - Innenverteidiger / IV -> 'CB'
-        - Außenverteidiger / LV / RV -> 'LB' bzw. 'RB'
-        - Stürmer / MS / Knipser -> 'ST'
-        - Flügelspieler / LA / RA -> 'LW' bzw. 'RW'
+            Erlaubte JSON-Schlüssel:
+            - club_name (String)
+            - position (String, ENGLISCHE Kürzel z. B. 'ST', 'CM', 'CB', 'RW', 'LW', 'CAM', 'CDM', 'RB', 'LB' oder null)
+            - max_age (Integer oder null)
+            - max_value_eur (Integer in Euro oder null)
+            - min_overall (Integer oder null)
+            - min_potential (Integer oder null)
+            - preferred_foot ('Left' oder 'Right' oder null)
+            - similar_to_player (String, Spielername oder null)
 
-        Erlaubte JSON-Schlüssel:
-        - club_name (String)
-        - position (String, ENGLISCHE Kürzel z. B. 'ST', 'CM', 'CB', 'RW', 'LW', 'CAM', 'CDM', 'RB', 'LB' oder null)
-        - max_age (Integer oder null)
-        - max_value_eur (Integer in Euro oder null)
-        - min_overall (Integer oder null)
-        - min_potential (Integer oder null)
-        - preferred_foot ('Left' oder 'Right' oder null)
-        - similar_to_player (String, Spielername oder null)
+            Antworte AUSSCHLIESSLICH mit einem validen JSON-Objekt ohne Markdown (kein ```json)!
+            Anfrage: "{user_prompt}"
+            """
 
-        Antworte AUSSCHLIESSLICH mit einem validen JSON-Objekt ohne Markdown (kein ```json)!
-        Anfrage: "{user_prompt}"
-        """
+      raw_text = None
+      for m in FALLBACK_MODELS:
+        try:
+          res = client.models.generate_content(
+              model=m, contents=extraction_prompt
+          )
+          raw_text = res.text
+          break
+        except Exception:
+          continue
 
-    raw_text = None
-    for m in FALLBACK_MODELS:
-      try:
-        res = client.models.generate_content(
-            model=m, contents=extraction_prompt
+      if raw_text:
+        clean_json = (
+            raw_text.strip().replace("```json", "").replace("```", "").strip()
         )
-        raw_text = res.text
-        break
-      except Exception:
-        continue
+        params = json.loads(clean_json)
 
-    if raw_text:
-      clean_json = (
-          raw_text.strip().replace("```json", "").replace("```", "").strip()
-      )
-      params = json.loads(clean_json)
-
-      st.session_state["params"] = params
-      st.session_state["user_prompt"] = user_prompt
+        st.session_state["params"] = params
+        st.session_state["user_prompt"] = user_prompt
+        st.session_state["chat_history"] = []  # Chat-Verlauf zurücksetzen
 
 if "params" in st.session_state:
   params = st.session_state["params"]
@@ -211,7 +225,6 @@ if "params" in st.session_state:
   # Datenbank-Filterung
   filtered_df = df.copy()
 
-  # Berücksichtigung von Sidebar-Reglern
   max_val = min(
       params.get("max_value_eur") or 999_999_999, override_max_value
   )
@@ -239,7 +252,6 @@ if "params" in st.session_state:
         )
     ]
 
-  # Zusatz-Filter aus Sidebar
   if malocher_mode:
     filtered_df = filtered_df[
         filtered_df["malocher_index"] >= 70.0
@@ -251,7 +263,7 @@ if "params" in st.session_state:
 
   if filtered_df.empty:
     st.warning(
-        "Keine Spieler gefunden, die alle Kriterien erfüllen! Locke die Filter"
+        "Keine Spieler gefunden, die alle Kriterien erfüllen! Locker die Filter"
         " in der Sidebar etwas auf."
     )
   else:
@@ -314,6 +326,15 @@ if "params" in st.session_state:
 
     detected_club = params.get("club_name", "Verein")
 
+    # Highlighting Top Player mit Metrik-Karten
+    top_player = top_matches.iloc[0]
+    st.markdown("### 🏆 Top-Empfehlung")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Spieler", top_player["short_name"])
+    m2.metric("OVR / POT", f"{top_player['overall']} / {top_player['potential']}")
+    m3.metric("⚒️ Malocher-Index", f"{top_player['malocher_index']} %")
+    m4.metric("💎 ROI-Faktor", f"{top_player['roi_score']}")
+
     col1, col2 = st.columns([1.2, 1])
 
     with col1:
@@ -352,7 +373,11 @@ if "params" in st.session_state:
         ] + [0]
 
         fig, ax = plt.subplots(figsize=(5, 5), subplot_kw=dict(polar=True))
-        plt.xticks(angles[:-1], german_skill_labels)
+        fig.patch.set_facecolor("#0e1117")
+        ax.set_facecolor("#161b26")
+        ax.tick_params(colors="white")
+
+        plt.xticks(angles[:-1], german_skill_labels, color="white")
         ax.plot(angles, v1, label=p1_selected, color="#004D98", linewidth=2)
         ax.plot(angles, v2, label=p2_selected, color="#E30613", linewidth=2)
         ax.fill(angles, v1, alpha=0.15, color="#004D98")
@@ -400,3 +425,51 @@ if "params" in st.session_state:
         )
       except Exception as e:
         st.info("PDF-Export steht bereit.")
+
+    # ---------------------------------------------------------
+    # Interaktiver KI-Scout Chatbot (Interaktive Rückfragen)
+    # ---------------------------------------------------------
+    st.divider()
+    st.subheader("💬 Frage den Chef-Scout")
+    st.markdown(
+        "Stelle direkte Detailfragen zu den gefundenen Spielern oder taktischen"
+        " Eignungen:"
+    )
+
+    if "chat_history" not in st.session_state:
+      st.session_state["chat_history"] = []
+
+    for q, a in st.session_state["chat_history"]:
+      st.chat_message("user").write(q)
+      st.chat_message("assistant").write(a)
+
+    user_question = st.chat_input(
+        "z. B. Warum ist der Top-Treffer besser für Konterfußball geeignet?"
+    )
+
+    if user_question:
+      st.chat_message("user").write(user_question)
+
+      chat_prompt = f"""
+            Du bist der Chef-Scout von {detected_club}.
+            Der Manager stellt dir eine Nachfrage zu den aktuell vorgeschlagenen Kandidaten:
+            Top-Kandidaten: {top_matches.to_string()}
+            
+            Frage des Managers: '{user_question}'
+            
+            Antworte kurz, präzise, fachlich kompetent und praxisnah.
+            """
+
+      chat_reply = None
+      for m in FALLBACK_MODELS:
+        try:
+          chat_reply = client.models.generate_content(
+              model=m, contents=chat_prompt
+          ).text
+          break
+        except Exception:
+          continue
+
+      if chat_reply:
+        st.chat_message("assistant").write(chat_reply)
+        st.session_state["chat_history"].append((user_question, chat_reply))
