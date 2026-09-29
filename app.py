@@ -21,7 +21,7 @@ st.set_page_config(
     page_icon="⚒️",
 )
 
-st.title("⚒️ Malocher Scouting")
+st.title("⚒️️ Malocher Scouting")
 st.markdown(
     "Universelle, datengestützte Spielersuche & Recommender System powered by "
     "**Gemini, Cosine Similarity & Tactical Fit**"
@@ -1052,57 +1052,68 @@ Gehaltsdaten, Ablösen oder sonstige Informationen, die nicht in den Daten stehe
 
         # -----------------------------------------------------
         # Chef-Scout Chat (Erweitert um flexiblen Spieler-Lookup)
-# ---------------------------------------------------------
-st.divider()
-st.subheader("💬 Frage den Chef-Scout")
+        # -----------------------------------------------------
+        st.divider()
+        st.subheader("💬 Frage den Chef-Scout")
 
-for q, a in st.session_state["chat_history"]:
-    st.chat_message("user").write(q)
-    st.chat_message("assistant").write(a)
+        for q, a in st.session_state["chat_history"]:
+            st.chat_message("user").write(q)
+            st.chat_message("assistant").write(a)
 
-user_question = st.chat_input(
-    "z. B. Was weißt du über Tom Rothe? Oder: Passt Assan Ouédraogo zu Schalke?"
-)
+        user_question = st.chat_input(
+            "z. B. Was weißt du über Spieler X? Oder: Passt Spieler X zu Schalke?"
+        )
 
-if user_question:
-    st.chat_message("user").write(user_question)
+        if user_question:
+            st.chat_message("user").write(user_question)
 
-    # 1. Prüfen, ob ein bestimmter Spieler im Gesamtdatensatz erwähnt wird
-    mentioned_players_data = ""
-    # Einfache Suche nach passenden Namen aus dem gesamten Dataframe
-    for name in df["long_name"].dropna().unique():
-        # Falls Nachname oder Vorname in der Frage vorkommen (bei Namen > 3 Zeichen)
-        name_parts = [p for p in name.split() if len(p) > 3]
-        if any(part.lower() in user_question.lower() for part in name_parts):
-            player_row = df[df["long_name"] == name].iloc[0]
-            mentioned_players_data += f"\n- Gefundener Spieler in Datenbank: {player_row['long_name']} | Alter: {player_row['age']} | OVR: {player_row['overall']} | POT: {player_row['potential']} | Marktwert: {player_row['value_eur']/1e6:.2f}M€ | Pos: {player_row['player_positions']} | Malocher-Index: {player_row['malocher_index']} | ROI: {player_row['roi_score']}\n"
-            break  # Ersten passenden Treffer sichern
+            # 1. Automatische Erkennung & Suche nach genannten Spielern im Gesamtdatensatz (df)
+            mentioned_players_data = ""
+            for name in df["long_name"].dropna().unique():
+                # Suche nach signifikanten Namensteilen (> 3 Zeichen)
+                name_parts = [p for p in str(name).split() if len(p) > 3]
+                if any(part.lower() in user_question.lower() for part in name_parts):
+                    player_row = df[df["long_name"] == name].iloc[0]
+                    mentioned_players_data += (
+                        f"\n- Gefundener Spieler in Datenbank: {player_row['long_name']} | "
+                        f"Alter: {player_row['age']} | OVR: {player_row['overall']} | "
+                        f"POT: {player_row['potential']} | Marktwert: {player_row['value_eur']/1e6:.2f} Mio. € | "
+                        f"Position: {player_row['player_positions']} | Malocher-Index: {player_row['malocher_index']} | "
+                        f"ROI: {player_row['roi_score']} | Skills (Tempo:{player_row['pace']}, Schuss:{player_row['shooting']}, Passen:{player_row['passing']}, Dribbling:{player_row['dribbling']}, Def:{player_row['defending']}, Physis:{player_row['physic']})\n"
+                    )
+                    break
 
-    # 2. Prompt aufbauen
-    chat_prompt = f"""
+            # Context für Top-Kandidaten aufbauen
+            top_context = top_matches[['long_name', 'age', 'overall', 'potential', 'value_eur', 'player_positions', 'malocher_index', 'roi_score']].to_string(index=False)
+
+            chat_prompt = f"""
 Du bist der Chef-Scout von {detected_club}.
 Der Manager fragt dich Folgendes: "{user_question}"
 
-Kontext aus der aktuellen Top-Kandidaten-Liste:
-{top_matches[['long_name', 'age', 'overall', 'potential', 'value_eur', 'player_positions', 'malocher_index', 'roi_score']].to_string(index=False)}
+Kontext aus den aktuellen Top-Kandidaten:
+{top_context}
 
-Zusätzlich aus der Gesamtdatenbank gefundene Spieler-Informationen (falls relevant):
-{mentioned_players_data if mentioned_players_data else "Kein spezifischer Spieler aus der Gesamtdatenbank direkt erkannt."}
+Zusätzlich aus der Gesamtdatenbank erkannter Spieler (falls zutreffend):
+{mentioned_players_data if mentioned_players_data else "Kein spezifischer Spieler außerhalb der Top 5 in der Frage direkt erkannt."}
 
-Taktischer Fokus der aktuellen Suche: {', '.join(tactical_labels)}
+Taktischer Fokus der aktuellen Analyse: {', '.join(tactical_labels)}
 
 Anweisungen:
-- Wenn nach den aktuellen Kandidaten gefragt wird, beziehe dich auf diese.
-- Wenn nach einem speziellen Spieler gefragt wird ("Was weißt du über X?" / "Passt X zu Y?"), nutze die Datenbank-Informationen und beurteile Marktwert, Potenzial, Alter und Position im Kontext des Vereins.
+- Wenn nach den aktuellen Top-Kandidaten gefragt wird, beziehe dich auf diese.
+- Wenn nach einem speziellen Spieler gefragt wird ("Was weißt du über X?" / "Passt X zu Y?"), nutze die Datenbank-Informationen und beurteile Marktwert, Potenzial, Alter, Skills und Position im Kontext des Zielvereins.
 - Antworte professionell, präzise, als erfahrener Profi-Scout und ausschließlich auf Basis der vorliegenden Daten.
 """
-    chat_reply, chat_error = gemini_generate(chat_prompt)
+            chat_reply, chat_error = gemini_generate(chat_prompt)
 
-    if chat_reply:
-        st.chat_message("assistant").write(chat_reply)
-        st.session_state["chat_history"].append(
-            (user_question, chat_reply)
-        )
-        st.rerun()
-    else:
-        st.error(f"Chef-Scout konnte nicht antworten: {chat_error}")
+            if chat_reply:
+                st.chat_message("assistant").write(chat_reply)
+                st.session_state["chat_history"].append(
+                    (user_question, chat_reply)
+                )
+                st.rerun()
+            else:
+                st.error(f"Chef-Scout konnte nicht antworten: {chat_error}")
+else:
+    st.info(
+        "Starte eine Scouting-Analyse oder nutze einen der Schnellstart-Buttons."
+    )
