@@ -134,7 +134,7 @@ malocher_mode = st.sidebar.checkbox(
     "⚒️ Malocher-Fokus erzwingen (Hoher Malocher-Index)", value=False
 )
 schnaeppchen_mode = st.sidebar.checkbox(
-    "💎 Nur Schnäppchen & Talente (Hoher ROI-Score)", value=False
+    "Nur Schnäppchen & Talente (Hoher ROI-Score)", value=False
 )
 
 override_max_value = st.sidebar.slider(
@@ -340,7 +340,7 @@ if "params" in st.session_state:
         "potential": "Potenzial (POT)",
         "value_eur": "Marktwert (€)",
         "malocher_index": "⚒️ Malocher-Index",
-        "roi_score": "💎 ROI-Faktor",
+        "roi_score": "ROI-Faktor",
         "match_score_%": "Match-Score (%)",
     })
     display_matches.index.name = "Player ID"
@@ -355,7 +355,7 @@ if "params" in st.session_state:
         "OVR / POT", f"{top_player['overall']} / {top_player['potential']}"
     )
     m3.metric("⚒️ Malocher-Index", f"{top_player['malocher_index']} %")
-    m4.metric("💎 ROI-Faktor", f"{top_player['roi_score']}")
+    m4.metric("ROI-Faktor", f"{top_player['roi_score']}")
 
     col1, col2 = st.columns([1.2, 1])
 
