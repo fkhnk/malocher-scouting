@@ -21,7 +21,7 @@ st.set_page_config(
     page_icon="⚒️",
 )
 
-st.title("⚒️️ Malocher Scouting")
+st.title("⚒️ Malocher Scouting")
 st.markdown(
     "Universelle, datengestützte Spielersuche & Recommender System powered by "
     "**Gemini, Cosine Similarity & Tactical Fit**"
@@ -406,7 +406,7 @@ def create_pdf_report(club_name, query, report_text, top_matches_df):
 
 
 # ---------------------------------------------------------
-# Sidebar
+# Sidebar (Regler auf Maximalwerte gesetzt)
 # ---------------------------------------------------------
 st.sidebar.header("🎛️ Hybrid-Suche & Feinjustierung")
 st.sidebar.markdown(
@@ -428,7 +428,7 @@ override_max_value = st.sidebar.slider(
     "Maximaler Marktwert (€)",
     min_value=500_000,
     max_value=100_000_000,
-    value=15_000_000,
+    value=100_000_000,
     step=500_000,
     help="Obergrenze für den aktuellen Marktwert der Spieler."
 )
@@ -436,14 +436,14 @@ override_max_age = st.sidebar.slider(
     "Maximales Alter",
     min_value=16,
     max_value=40,
-    value=28,
+    value=40,
     help="Höchstalter der zu berücksichtigenden Spieler."
 )
 override_min_potential = st.sidebar.slider(
     "Mindest-Potenzial (POT)",
     min_value=60,
     max_value=95,
-    value=75,
+    value=95,
     help="Mindestwert für das erwartete Maximalpotenzial (POT)."
 )
 
@@ -556,7 +556,6 @@ Anfrage: "{user_prompt}"
                     params = json.loads(clean_json)
                     st.session_state["params"] = params
                     st.session_state["user_prompt"] = user_prompt
-                    st.session_state["chat_history"] = []
                 except Exception as exc:
                     st.error(f"Fehler beim Parsen der KI-Kriterien: {exc}")
             else:
@@ -703,7 +702,10 @@ if "params" in st.session_state:
         ).copy()
 
         top_matches = results.head(5).copy()
-        top3_matches = top_matches.head(3).copy()
+        
+        # In Session State speichern für den Chat
+        st.session_state["top_matches"] = top_matches
+        st.session_state["tactical_labels"] = tactical_labels
 
         # -----------------------------------------------------
         # Top Recommendation
@@ -1049,71 +1051,79 @@ Gehaltsdaten, Ablösen oder sonstige Informationen, die nicht in den Daten stehe
                 "Der KI-Bericht konnte nicht erzeugt werden. "
                 f"Details: {report_error}"
             )
-
-        # -----------------------------------------------------
-        # Chef-Scout Chat (Erweitert um flexiblen Spieler-Lookup)
-        # -----------------------------------------------------
-        st.divider()
-        st.subheader("💬 Frage den Chef-Scout")
-
-        for q, a in st.session_state["chat_history"]:
-            st.chat_message("user").write(q)
-            st.chat_message("assistant").write(a)
-
-        user_question = st.chat_input(
-            "z. B. Was weißt du über Spieler X? Oder: Passt Spieler X zu Schalke?"
-        )
-
-        if user_question:
-            st.chat_message("user").write(user_question)
-
-            # 1. Automatische Erkennung & Suche nach genannten Spielern im Gesamtdatensatz (df)
-            mentioned_players_data = ""
-            for name in df["long_name"].dropna().unique():
-                # Suche nach signifikanten Namensteilen (> 3 Zeichen)
-                name_parts = [p for p in str(name).split() if len(p) > 3]
-                if any(part.lower() in user_question.lower() for part in name_parts):
-                    player_row = df[df["long_name"] == name].iloc[0]
-                    mentioned_players_data += (
-                        f"\n- Gefundener Spieler in Datenbank: {player_row['long_name']} | "
-                        f"Alter: {player_row['age']} | OVR: {player_row['overall']} | "
-                        f"POT: {player_row['potential']} | Marktwert: {player_row['value_eur']/1e6:.2f} Mio. € | "
-                        f"Position: {player_row['player_positions']} | Malocher-Index: {player_row['malocher_index']} | "
-                        f"ROI: {player_row['roi_score']} | Skills (Tempo:{player_row['pace']}, Schuss:{player_row['shooting']}, Passen:{player_row['passing']}, Dribbling:{player_row['dribbling']}, Def:{player_row['defending']}, Physis:{player_row['physic']})\n"
-                    )
-                    break
-
-            # Context für Top-Kandidaten aufbauen
-            top_context = top_matches[['long_name', 'age', 'overall', 'potential', 'value_eur', 'player_positions', 'malocher_index', 'roi_score']].to_string(index=False)
-
-            chat_prompt = f"""
-Du bist der Chef-Scout von {detected_club}.
-Der Manager fragt dich Folgendes: "{user_question}"
-
-Kontext aus den aktuellen Top-Kandidaten:
-{top_context}
-
-Zusätzlich aus der Gesamtdatenbank erkannter Spieler (falls zutreffend):
-{mentioned_players_data if mentioned_players_data else "Kein spezifischer Spieler außerhalb der Top 5 in der Frage direkt erkannt."}
-
-Taktischer Fokus der aktuellen Analyse: {', '.join(tactical_labels)}
-
-Anweisungen:
-- Wenn nach den aktuellen Top-Kandidaten gefragt wird, beziehe dich auf diese.
-- Wenn nach einem speziellen Spieler gefragt wird ("Was weißt du über X?" / "Passt X zu Y?"), nutze die Datenbank-Informationen und beurteile Marktwert, Potenzial, Alter, Skills und Position im Kontext des Zielvereins.
-- Antworte professionell, präzise, als erfahrener Profi-Scout und ausschließlich auf Basis der vorliegenden Daten.
-"""
-            chat_reply, chat_error = gemini_generate(chat_prompt)
-
-            if chat_reply:
-                st.chat_message("assistant").write(chat_reply)
-                st.session_state["chat_history"].append(
-                    (user_question, chat_reply)
-                )
-                st.rerun()
-            else:
-                st.error(f"Chef-Scout konnte nicht antworten: {chat_error}")
 else:
     st.info(
         "Starte eine Scouting-Analyse oder nutze einen der Schnellstart-Buttons."
     )
+
+# ---------------------------------------------------------
+# Malocher Scout Chat (IMMER VERFÜGBAR AUCH AUF STARTSEITE)
+# ---------------------------------------------------------
+st.divider()
+st.subheader("💬 Frage den Malocher Scout")
+
+for q, a in st.session_state["chat_history"]:
+    st.chat_message("user").write(q)
+    st.chat_message("assistant").write(a)
+
+user_question = st.chat_input(
+    "Frage den Malocher Scout... (z. B. Was weißt du über Spieler X? Oder: Passt Spieler X zu Schalke?)"
+)
+
+if user_question:
+    st.chat_message("user").write(user_question)
+
+    # 1. Automatische Erkennung & Suche nach genannten Spielern im Gesamtdatensatz (df)
+    mentioned_players_data = ""
+    for name in df["long_name"].dropna().unique():
+        # Suche nach signifikanten Namensteilen (> 3 Zeichen)
+        name_parts = [p for p in str(name).split() if len(p) > 3]
+        if any(part.lower() in user_question.lower() for part in name_parts):
+            player_row = df[df["long_name"] == name].iloc[0]
+            mentioned_players_data += (
+                f"\n- Gefundener Spieler in Datenbank: {player_row['long_name']} | "
+                f"Alter: {player_row['age']} | OVR: {player_row['overall']} | "
+                f"POT: {player_row['potential']} | Marktwert: {player_row['value_eur']/1e6:.2f} Mio. € | "
+                f"Position: {player_row['player_positions']} | Malocher-Index: {player_row['malocher_index']} | "
+                f"ROI: {player_row['roi_score']} | Skills (Tempo:{player_row['pace']}, Schuss:{player_row['shooting']}, Passen:{player_row['passing']}, Dribbling:{player_row['dribbling']}, Def:{player_row['defending']}, Physis:{player_row['physic']})\n"
+            )
+            break
+
+    # 2. Kontext für Top-Kandidaten aus der Session holen (falls vorhanden)
+    top_matches_session = st.session_state.get("top_matches")
+    if top_matches_session is not None and not top_matches_session.empty:
+        top_context = top_matches_session[['long_name', 'age', 'overall', 'potential', 'value_eur', 'player_positions', 'malocher_index', 'roi_score']].to_string(index=False)
+    else:
+        top_context = "Aktuell wurde noch keine spezifische Suchanalyse gestartet."
+
+    detected_club = st.session_state.get("params", {}).get("club_name") or "einem Verein"
+    tactical_labels_session = st.session_state.get("tactical_labels", ["Ausgewogen"])
+
+    chat_prompt = f"""
+Du bist der "Malocher Scout", ein erfahrener, datengestützter Profi-Scout im Fußball.
+Der Manager fragt dich Folgendes: "{user_question}"
+
+Kontext aus der aktuellen Suchanalyse (falls bereits gelaufen):
+{top_context}
+
+Zusätzlich aus der Gesamtdatenbank erkannter Spieler (falls zutreffend):
+{mentioned_players_data if mentioned_players_data else "Kein spezifischer Spieler in der Frage direkt erkannt."}
+
+Taktischer Fokus der aktuellen Analyse (falls vorhanden): {', '.join(tactical_labels_session)}
+
+Anweisungen:
+- Du bist der "Malocher Scout". Antworte kompetent, direkt, praxisnah und auf Deutsch.
+- Wenn nach einem speziellen Spieler gefragt wird ("Was weißt du über X?" / "Passt X zu Y?"), nutze die Datenbank-Informationen und beurteile Marktwert, Potenzial, Alter, Skills und Position im Kontext des Zielvereins.
+- Wenn noch keine Suche gelaufen ist, beantworte allgemeine Fragen oder Spieleranfragen direkt auf Basis der gelieferten Daten und deines Fachwissens.
+- Antworte professionell, präzise und ausschließlich auf Basis der vorliegenden Daten.
+"""
+    chat_reply, chat_error = gemini_generate(chat_prompt)
+
+    if chat_reply:
+        st.chat_message("assistant").write(chat_reply)
+        st.session_state["chat_history"].append(
+            (user_question, chat_reply)
+        )
+        st.rerun()
+    else:
+        st.error(f"Malocher Scout konnte nicht antworten: {chat_error}")
