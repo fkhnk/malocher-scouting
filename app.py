@@ -7,7 +7,6 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from fpdf import FPDF
-from fpdf.enums import WrapMode, XPos, YPos
 from google import genai
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import MinMaxScaler
@@ -290,122 +289,40 @@ def calculate_tactical_fit(dataframe, weights):
 # ---------------------------------------------------------
 # PDF
 # ---------------------------------------------------------
-def _pdf_safe_text(value):
-    """Sanitize AI/user text for FPDF's built-in Helvetica font."""
-    if value is None:
-        return ""
-
-    text = str(value)
-    text = (
-        text.replace("**", "")
-        .replace("__", "")
-        .replace("###", "")
-        .replace("##", "")
-        .replace("# ", "")
-        .replace("\u2013", "-")
-        .replace("\u2014", "-")
-        .replace("\u2011", "-")
-        .replace("\u2212", "-")
-        .replace("\u2022", "-")
-        .replace("\u00a0", " ")
-    )
-
-    # Helvetica in the built-in FPDF font set is Latin-1 only.
-    text = text.encode("latin-1", "replace").decode("latin-1")
-
-    # FPDF2 can fail when one token (URL, identifier, markdown artifact, etc.)
-    # is wider than the complete printable area. Insert safe breakpoints.
-    safe_lines = []
-    for line in text.splitlines() or [""]:
-        if not line:
-            safe_lines.append("")
-            continue
-
-        # Split very long non-space tokens into chunks. The inserted newline
-        # makes the normal WORD wrapper deterministic and avoids the
-        # "Not enough horizontal space to render a single character" error.
-        parts = re.split(r"(\s+)", line)
-        rebuilt = ""
-        for part in parts:
-            if part.isspace():
-                rebuilt += part
-            elif len(part) > 60:
-                chunks = [part[i:i + 60] for i in range(0, len(part), 60)]
-                rebuilt += "\n".join(chunks)
-            else:
-                rebuilt += part
-        safe_lines.append(rebuilt)
-
-    return "\n".join(safe_lines)
-
-
-def _pdf_multiline(pdf, text, height=5, size=9):
-    pdf.set_font("Helvetica", "", size)
-    pdf.multi_cell(
-        0,
-        height,
-        _pdf_safe_text(text),
-        new_x=XPos.LMARGIN,
-        new_y=YPos.NEXT,
-    )
-
-
 def create_pdf_report(club_name, query, report_text, top_matches_df):
     pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.set_margins(10, 10, 10)
     pdf.add_page()
-
     pdf.set_font("Helvetica", "B", 18)
     pdf.cell(0, 10, "MALOCHER SCOUTING - BERICHT", ln=True, align="C")
-
     pdf.set_font("Helvetica", "I", 12)
-    safe_club = _pdf_safe_text(f"Verein: {club_name}")
-    if len(safe_club) > 100:
-        safe_club = safe_club[:97] + "..."
-    pdf.cell(0, 8, safe_club.replace("\n", " "), ln=True, align="C")
-
-    pdf.line(10, pdf.get_y() + 2, 200, pdf.get_y() + 2)
+    pdf.cell(0, 8, f"Verein: {club_name}", ln=True, align="C")
+    pdf.line(10, 30, 200, 30)
     pdf.ln(8)
-
     pdf.set_font("Helvetica", "B", 11)
-    pdf.multi_cell(
-        0,
-        7,
-        _pdf_safe_text(f"Anforderungsprofil: {query}"),
-        new_x=XPos.LMARGIN,
-        new_y=YPos.NEXT,
-    )
+    pdf.cell(0, 7, f"Anforderungsprofil: {query}", ln=True)
     pdf.ln(4)
-
     pdf.set_font("Helvetica", "B", 13)
-    pdf.multi_cell(
-        0,
-        8,
-        "Chef-Scout Analyse:",
-        new_x=XPos.LMARGIN,
-        new_y=YPos.NEXT,
+    pdf.cell(0, 8, "Chef-Scout Analyse:", ln=True)
+    pdf.set_font("Helvetica", "", 10)
+    clean_text = (
+        report_text.replace("**", "")
+        .replace("##", "")
+        .encode("latin-1", "replace")
+        .decode("latin-1")
     )
-
-    _pdf_multiline(pdf, report_text, height=6, size=10)
+    pdf.multi_cell(0, 6, clean_text)
 
     pdf.ln(4)
     pdf.set_font("Helvetica", "B", 11)
-    pdf.multi_cell(
-        0,
-        7,
-        "Top-Kandidaten:",
-        new_x=XPos.LMARGIN,
-        new_y=YPos.NEXT,
-    )
-
+    pdf.cell(0, 7, "Top-Kandidaten:", ln=True)
+    pdf.set_font("Helvetica", "", 9)
     for _, row in top_matches_df.iterrows():
         line = (
             f"{row['long_name']} | OVR {row['overall']} | POT {row['potential']} | "
             f"Tactical Fit {row['tactical_fit']} | Malocher {row['malocher_index']} | "
             f"ROI {row['roi_score']}"
         )
-        _pdf_multiline(pdf, line, height=5, size=9)
+        pdf.multi_cell(0, 5, line.encode("latin-1", "replace").decode("latin-1"))
 
     output = pdf.output(dest="S")
     return output.encode("latin-1") if isinstance(output, str) else bytes(output)
