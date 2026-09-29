@@ -10,7 +10,7 @@ from sklearn.preprocessing import MinMaxScaler
 import streamlit as st
 
 # ---------------------------------------------------------
-# Page Config & Custom Styling
+# Page Config & Custom Styling (Königsblau & Dark Theme)
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="Malocher Scouting ⚒️", layout="wide", page_icon="⚒️"
@@ -29,10 +29,10 @@ st.markdown(
     " **Gemini & Cosine Similarity**"
 )
 
-# API Key sichern
+# API Key sichern (aus Secrets oder direkt)
 if "GEMINI_API_KEY" in st.secrets:
   GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-    
+
 client = genai.Client(api_key=GEMINI_API_KEY)
 FALLBACK_MODELS = [
     'gemini-3.8-flash',
@@ -50,6 +50,9 @@ SKILL_MAP = {
 }
 
 
+# ---------------------------------------------------------
+# Feature Engineering (Malocher-Index & ROI / Schnäppchen)
+# ---------------------------------------------------------
 @st.cache_data
 def load_data():
   df = pd.read_csv("FC26_20250921.csv", low_memory=False)
@@ -63,16 +66,17 @@ def load_data():
   ]
   df[skill_columns] = df[skill_columns].fillna(df[skill_columns].mean())
 
-  # Fallback falls long_name nicht existiert
   if "long_name" not in df.columns:
     df["long_name"] = df["short_name"]
   else:
     df["long_name"] = df["long_name"].fillna(df["short_name"])
 
+  # Feature Engineering: Malocher-Index (Physis 45%, Defensive 35%, Tempo 20%)
   df["malocher_index"] = np.round(
       (df["physic"] * 0.45 + df["defending"] * 0.35 + df["pace"] * 0.20), 1
   )
 
+  # Feature Engineering: Entwicklungspotenzial & ROI-Faktor
   df["potential_growth"] = df["potential"] - df["overall"]
   val_in_mio = np.maximum(df["value_eur"] / 1_000_000, 0.1)
   df["roi_score"] = np.round(df["potential_growth"] / val_in_mio, 2)
@@ -83,6 +87,7 @@ def load_data():
 df, skill_columns = load_data()
 
 
+# PDF-Generator Hilfsfunktion
 def create_pdf_report(club_name, query, report_text, top_matches_df):
   pdf = FPDF()
   pdf.add_page()
@@ -109,7 +114,7 @@ def create_pdf_report(club_name, query, report_text, top_matches_df):
 
 
 # ---------------------------------------------------------
-# Sidebar
+# Sidebar: Hybrid-Suche & Interaktive Regler (Human-in-the-Loop)
 # ---------------------------------------------------------
 st.sidebar.header("🎛️ Hybrid-Suche & Feinjustierung")
 st.sidebar.markdown(
@@ -152,7 +157,10 @@ if st.button("🔍 Scouting-Analyse starten"):
         " eine Anforderung oder einen Wunschverein an."
     )
   else:
-    with st.spinner("Malocher Scouting analysiert die Anfrage..."):
+    with st.spinner(
+        "Malocher Scouting analysiert das Vereinsprofil und durchsucht die"
+        " Datenbank..."
+    ):
       extraction_prompt = f"""
             Du bist ein weltklasse Chef-Scout im Profifußball. Extrahiere die Parameter als JSON aus der Anfrage.
             
@@ -302,7 +310,7 @@ if "params" in st.session_state:
           by=["potential", "overall"], ascending=False
       )
 
-    # Auf GENAU 3 Top-Treffer begrenzt
+    # Exakt 3 Top-Treffer
     top_matches = results[[
         "long_name",
         "age",
@@ -326,8 +334,6 @@ if "params" in st.session_state:
         "roi_score": "💎 ROI-Faktor",
         "match_score_%": "Match-Score (%)",
     })
-
-    # Umbenennung des Dataframe-Indexes zu "Player ID" für Streamlit
     display_matches.index.name = "Player ID"
 
     detected_club = params.get("club_name", "Verein")
@@ -348,14 +354,14 @@ if "params" in st.session_state:
       st.subheader(f"📋 Top 3 Treffer für {detected_club}")
       st.dataframe(display_matches, use_container_width=True)
 
-      # Kurze Erklärungen unter der Tabelle
       st.markdown(
           """
-            **💡 Kennzahlen-Erklärung:**
-• **💎 ROI-Faktor (Return on Investment):** Quotient aus dem verbleibenden Entwicklungspotenzial (Potenzial minus aktuelle Stärke) und dem Marktwert in Millionen Euro. Höhere Werte signalisieren ein starkes Preis-Leistungs-Verhältnis bzw. hohes Talent zu geringen Kosten.
+    **💡 Kennzahlen-Erklärung:**
+    **💎 ROI-Faktor (Return on Investment):** Quotient aus dem verbleibenden Entwicklungspotenzial (Potenzial minus aktuelle Stärke) und dem Marktwert in Millionen Euro. Höhere Werte signalisieren ein starkes Preis-Leistungs-Verhältnis bzw. hohes Talent zu geringen Kosten.
         """,
       unsafe_allow_html=True,
   )
+
 with col2:
   st.subheader("🥊 Direct Head-to-Head Spieler-Vergleich")
   player_list = top_matches["long_name"].tolist()
