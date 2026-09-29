@@ -58,46 +58,6 @@ SKILL_MAP = {
 }
 
 # ---------------------------------------------------------
-# Begriffs-/Abkürzungserklärungen
-# ---------------------------------------------------------
-ABBREVIATION_HELP = {
-    "OVR": "Overall Rating: aktuelle Gesamtstärke des Spielers (0-100).",
-    "POT": "Potential: im Datensatz hinterlegtes Entwicklungspotenzial des Spielers.",
-    "ROI": "Return on Investment: Entwicklungspotenzial (POT minus OVR) im Verhältnis zum Marktwert in Mio. Euro.",
-    "Tactical Fit": "Taktische Passung: gewichteter Score der sechs vorhandenen Skillwerte passend zum erkannten Spielstil (0-100).",
-    "Malocher-Index": "Eigene Kennzahl aus Physis (45 %), Defensive (35 %) und Tempo (20 %).",
-    "Match-Score": "Cosine-Similarity zur gewählten Referenzperson. Nur verfügbar, wenn ein ähnlicher Spieler in der Anfrage erkannt wurde.",
-    "Scouting Score": "Technischer Gesamtscore aus Tactical Fit, POT, ROI, OVR und optional Match-Score. Keine echte Spielerbewertung durch einen Menschen.",
-}
-
-
-def tooltip(text_label, explanation):
-    return (
-        f'<span class="scout-term">{text_label}'
-        f'<span class="scout-info">ⓘ<span class="scout-tooltip">{explanation}</span></span></span>'
-    )
-
-
-st.markdown(
-    """
-    <style>
-    .scout-term { position: relative; display: inline-block; font-weight: 600; }
-    .scout-info { position: relative; display: inline-block; margin-left: 4px; cursor: help; font-weight: 400; }
-    .scout-tooltip {
-        visibility: hidden; opacity: 0; width: 310px;
-        background: #161b26; color: #fff; text-align: left;
-        padding: 10px 12px; border-radius: 7px;
-        position: absolute; z-index: 9999; left: 18px; top: 22px;
-        box-shadow: 0 4px 16px rgba(0,0,0,.35);
-        transition: opacity .12s ease; font-size: 12px; line-height: 1.4;
-    }
-    .scout-info:hover .scout-tooltip { visibility: visible; opacity: 1; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-# ---------------------------------------------------------
 # Session State
 # ---------------------------------------------------------
 if "selected_prompt" not in st.session_state:
@@ -144,14 +104,6 @@ def load_data():
     for col in ["age", "overall", "potential", "value_eur", *skill_columns]:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # Datenqualität vor der Imputation messen, damit ersichtlich bleibt,
-    # wie vollständig die Rohdaten tatsächlich sind.
-    quality_columns = [
-        "age", "overall", "potential", "value_eur",
-        "player_positions", *skill_columns
-    ]
-    quality = float(df[quality_columns].notna().mean().mean() * 100)
-
     for col in skill_columns:
         df[col] = df[col].fillna(df[col].mean())
 
@@ -173,8 +125,6 @@ def load_data():
     df["potential_growth"] = df["potential"] - df["overall"]
     val_in_mio = np.maximum(df["value_eur"] / 1_000_000, 0.1)
     df["roi_score"] = np.round(df["potential_growth"] / val_in_mio, 2)
-
-    df.attrs["data_quality"] = round(quality, 1)
 
     return df, skill_columns
 
@@ -509,33 +459,6 @@ if st.session_state["shortlist"]:
 else:
     st.sidebar.caption("Noch keine Spieler gespeichert.")
 
-if st.session_state["shortlist"]:
-    shortlist_df_sidebar = df[df["long_name"].isin(st.session_state["shortlist"])].copy()
-    export_cols = [c for c in [
-        "long_name", "age", "player_positions", "overall", "potential",
-        "value_eur", "malocher_index", "roi_score"
-    ] if c in shortlist_df_sidebar.columns]
-    shortlist_export = shortlist_df_sidebar[export_cols].rename(columns={
-        "long_name": "Spieler",
-        "age": "Alter",
-        "player_positions": "Position",
-        "overall": "OVR",
-        "potential": "POT",
-        "value_eur": "Marktwert (€)",
-        "malocher_index": "Malocher-Index",
-        "roi_score": "ROI-Faktor",
-    })
-    st.sidebar.download_button(
-        "⬇️ Shortlist als CSV",
-        shortlist_export.to_csv(index=False).encode("utf-8-sig"),
-        file_name="Malocher_Shortlist.csv",
-        mime="text/csv",
-        use_container_width=True,
-    )
-    if st.sidebar.button("🗑️ Shortlist leeren", use_container_width=True):
-        st.session_state["shortlist"] = []
-        st.rerun()
-
 # ---------------------------------------------------------
 # Search Input
 # ---------------------------------------------------------
@@ -701,11 +624,6 @@ if "params" in st.session_state:
     if schnaeppchen_mode:
         filtered_df = filtered_df[filtered_df["roi_score"] >= 1.5]
 
-    st.caption(
-        f"🔎 {len(filtered_df):,} Spieler erfüllen die aktuellen Filterkriterien."
-        .replace(",", ".")
-    )
-
     if filtered_df.empty:
         st.warning(
             "Keine Spieler gefunden, die alle Kriterien erfüllen. "
@@ -787,29 +705,6 @@ if "params" in st.session_state:
         top3_matches = top_matches.head(3).copy()
 
         # -----------------------------------------------------
-        # Sortier-/Priorisierungsoptionen
-        # -----------------------------------------------------
-        sort_options = {
-            "Scouting Score": "scouting_score",
-            "Tactical Fit": "tactical_fit",
-            "Potenzial": "potential",
-            "ROI-Faktor": "roi_score",
-            "Gesamtstärke (OVR)": "overall",
-        }
-        selected_sort_label = st.selectbox(
-            "Priorisierung der Kandidaten",
-            list(sort_options.keys()),
-            index=0,
-            help="Bestimmt, nach welcher vorhandenen Kennzahl die angezeigten Top-Kandidaten sortiert werden. Die zugrunde liegenden Daten werden dabei nicht verändert.",
-        )
-        results = results.sort_values(
-            by=sort_options[selected_sort_label],
-            ascending=False,
-        ).copy()
-        top_matches = results.head(5).copy()
-        top3_matches = top_matches.head(3).copy()
-
-        # -----------------------------------------------------
         # Top Recommendation
         # -----------------------------------------------------
         top_player = top_matches.iloc[0]
@@ -819,30 +714,10 @@ if "params" in st.session_state:
         m2.metric(
             "OVR / POT",
             f"{int(top_player['overall'])} / {int(top_player['potential'])}",
-            help=f"OVR = Overall Rating. POT = Potential. {ABBREVIATION_HELP['OVR']} {ABBREVIATION_HELP['POT']}",
         )
-        m3.metric(
-            "🎯 Tactical Fit",
-            f"{top_player['tactical_fit']:.1f}",
-            help=ABBREVIATION_HELP["Tactical Fit"],
-        )
-        m4.metric(
-            "⚒️ Malocher-Index",
-            f"{top_player['malocher_index']:.1f}",
-            help=ABBREVIATION_HELP["Malocher-Index"],
-        )
-        m5.metric(
-            "💎 ROI-Faktor",
-            f"{top_player['roi_score']:.2f}",
-            help=ABBREVIATION_HELP["ROI"],
-        )
-
-        budget_share = (float(top_player["value_eur"]) / max(max_val, 1)) * 100
-        growth = int(top_player["potential_growth"])
-        q1, q2, q3 = st.columns(3)
-        q1.metric("📈 Entwicklungspotenzial", f"+{growth} OVR")
-        q2.metric("💰 Marktwertanteil am Filterbudget", f"{budget_share:.1f} %", help="Anteil des aktuellen Marktwerts am maximal zugelassenen Marktwert der Suche. Das ist keine echte Ablöseschätzung.")
-        q3.metric("🗃️ Datenqualität", f"{df.attrs.get('data_quality', 100.0):.1f} %", help="Anteil befüllter Werte in den zentralen Scouting-Feldern der geladenen Datenbasis vor der Verarbeitung.")
+        m3.metric("🎯 Tactical Fit", f"{top_player['tactical_fit']:.1f}")
+        m4.metric("⚒️ Malocher-Index", f"{top_player['malocher_index']:.1f}")
+        m5.metric("💎 ROI-Faktor", f"{top_player['roi_score']:.2f}")
 
         # -----------------------------------------------------
         # Explainability
@@ -888,14 +763,6 @@ if "params" in st.session_state:
         # Top 5 Table + Shortlist
         # -----------------------------------------------------
         st.markdown("### 📋 Top 5 Kandidaten")
-        st.markdown(
-            f"{tooltip('OVR', ABBREVIATION_HELP['OVR'])} &nbsp;&nbsp; "
-            f"{tooltip('POT', ABBREVIATION_HELP['POT'])} &nbsp;&nbsp; "
-            f"{tooltip('ROI', ABBREVIATION_HELP['ROI'])} &nbsp;&nbsp; "
-            f"{tooltip('Match-Score', ABBREVIATION_HELP['Match-Score'])} &nbsp;&nbsp; "
-            f"{tooltip('Scouting Score', ABBREVIATION_HELP['Scouting Score'])}",
-            unsafe_allow_html=True,
-        )
         table_columns = [
             "long_name",
             "age",
@@ -928,37 +795,12 @@ if "params" in st.session_state:
                 "scouting_score": "Scouting Score",
             }
         )
-        st.dataframe(
-            table_df,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "OVR": st.column_config.NumberColumn("OVR", help=ABBREVIATION_HELP["OVR"], format="%d"),
-                "POT": st.column_config.NumberColumn("POT", help=ABBREVIATION_HELP["POT"], format="%d"),
-                "🎯 Tactical Fit": st.column_config.NumberColumn("🎯 Tactical Fit", help=ABBREVIATION_HELP["Tactical Fit"], format="%.1f"),
-                "⚒️ Malocher": st.column_config.NumberColumn("⚒️ Malocher", help=ABBREVIATION_HELP["Malocher-Index"], format="%.1f"),
-                "💎 ROI": st.column_config.NumberColumn("💎 ROI", help=ABBREVIATION_HELP["ROI"], format="%.2f"),
-                "Match-Score": st.column_config.NumberColumn("Match-Score", help=ABBREVIATION_HELP["Match-Score"], format="%.1f"),
-                "Scouting Score": st.column_config.NumberColumn("Scouting Score", help=ABBREVIATION_HELP["Scouting Score"], format="%.1f"),
-            },
-        )
+        st.dataframe(table_df, use_container_width=True, hide_index=True)
 
         st.caption(
             "Scouting Score kombiniert Tactical Fit, Ähnlichkeit (falls vorhanden), "
             "Potenzial, ROI und OVR. Er dient als technische Priorisierung und ersetzt keine menschliche Bewertung."
         )
-        with st.expander("ⓘ Wie wird der Scouting Score berechnet?"):
-            if target_name:
-                st.markdown(
-                    "**40 % Tactical Fit + 25 % Match-Score + 20 % POT + 10 % ROI + 5 % OVR.**"
-                )
-            else:
-                st.markdown(
-                    "**45 % Tactical Fit + 25 % POT + 20 % ROI + 10 % OVR.**"
-                )
-            st.caption(
-                "Die Gewichte sind eine technische Modellierung für die Suche. Sie sind keine objektive Bewertung eines Spielers."
-            )
 
         save_cols = st.columns(len(top_matches))
         for idx, (_, row) in enumerate(top_matches.iterrows()):
@@ -1014,37 +856,18 @@ if "params" in st.session_state:
                     "roi_score": "ROI",
                 }
             )
-            st.dataframe(
-                hg_display,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "OVR": st.column_config.NumberColumn("OVR", help=ABBREVIATION_HELP["OVR"], format="%d"),
-                    "POT": st.column_config.NumberColumn("POT", help=ABBREVIATION_HELP["POT"], format="%d"),
-                    "Tactical Fit": st.column_config.NumberColumn("Tactical Fit", help=ABBREVIATION_HELP["Tactical Fit"], format="%.1f"),
-                    "ROI": st.column_config.NumberColumn("ROI", help=ABBREVIATION_HELP["ROI"], format="%.2f"),
-                },
-            )
+            st.dataframe(hg_display, use_container_width=True, hide_index=True)
 
         # -----------------------------------------------------
         # Multi-player Scouting Battle
         # -----------------------------------------------------
         st.markdown("### 🥊 Scouting Battle – 3 bis 5 Spieler")
-        st.markdown(
-            f"{tooltip('OVR', ABBREVIATION_HELP['OVR'])} &nbsp;&nbsp; "
-            f"{tooltip('POT', ABBREVIATION_HELP['POT'])} &nbsp;&nbsp; "
-            f"{tooltip('Tactical Fit', ABBREVIATION_HELP['Tactical Fit'])} &nbsp;&nbsp; "
-            f"{tooltip('Malocher-Index', ABBREVIATION_HELP['Malocher-Index'])} &nbsp;&nbsp; "
-            f"{tooltip('ROI-Faktor', ABBREVIATION_HELP['ROI'])}",
-            unsafe_allow_html=True,
-        )
         comparison_list = top_matches["long_name"].tolist()
         selected_players = st.multiselect(
             "Spieler für den direkten Vergleich auswählen",
             options=comparison_list,
             default=comparison_list[: min(3, len(comparison_list))],
             max_selections=5,
-            help="Wähle 2 bis 5 Kandidaten aus den aktuellen Top-5. Verglichen werden zentrale Leistungs-, Potenzial-, Value- und Taktikkennzahlen sowie die Skillprofile im Radar-Chart.",
         )
 
         if len(selected_players) >= 2:
@@ -1072,9 +895,6 @@ if "params" in st.session_state:
                 "ROI-Faktor",
                 "Marktwert (€)",
             ]
-            compare_df.loc["Marktwert (€)"] = compare_df.loc["Marktwert (€)"].apply(
-                lambda x: f"{float(x) / 1_000_000:.2f} Mio. €"
-            )
             st.dataframe(compare_df, use_container_width=True)
 
             radar_names = selected_players[:5]
@@ -1112,6 +932,59 @@ if "params" in st.session_state:
             plt.close(fig)
         else:
             st.caption("Bitte mindestens zwei Spieler auswählen.")
+
+        # -----------------------------------------------------
+        # Original Head-to-Head detail
+        # -----------------------------------------------------
+        st.markdown("### 📈 Detailvergleich")
+        detail_col1, detail_col2 = st.columns(2)
+        detail_players = top_matches["long_name"].tolist()
+        p1_selected = detail_col1.selectbox(
+            "Spieler 1",
+            detail_players,
+            index=0,
+            key="detail_p1",
+        )
+        p2_selected = detail_col2.selectbox(
+            "Spieler 2",
+            detail_players,
+            index=min(1, len(detail_players) - 1),
+            key="detail_p2",
+        )
+
+        if p1_selected and p2_selected:
+            p1_data = df[df["long_name"] == p1_selected].iloc[0]
+            p2_data = df[df["long_name"] == p2_selected].iloc[0]
+            labels = [SKILL_MAP[col].upper() for col in skill_columns]
+            categories = skill_columns
+
+            v1 = p1_data[categories].tolist()
+            v2 = p2_data[categories].tolist()
+            v1 += v1[:1]
+            v2 += v2[:1]
+            angles = np.linspace(
+                0,
+                2 * np.pi,
+                len(categories),
+                endpoint=False,
+            ).tolist()
+            angles += angles[:1]
+
+            fig, ax = plt.subplots(
+                figsize=(5, 5),
+                subplot_kw={"polar": True},
+            )
+            fig.patch.set_facecolor("#0e1117")
+            ax.set_facecolor("#161b26")
+            ax.tick_params(colors="white")
+            ax.set_xticks(angles[:-1])
+            ax.set_xticklabels(labels, color="white")
+            ax.set_ylim(0, 100)
+            ax.plot(angles, v1, label=p1_selected, linewidth=2)
+            ax.plot(angles, v2, label=p2_selected, linewidth=2)
+            ax.legend(loc="lower left", bbox_to_anchor=(1.02, 0.0))
+            st.pyplot(fig)
+            plt.close(fig)
 
         # -----------------------------------------------------
         # AI Scouting Report
@@ -1164,18 +1037,6 @@ Gehaltsdaten, Ablösen oder sonstige Informationen, die nicht in den Daten stehe
             )
 
         # -----------------------------------------------------
-        # Begriffe / Kennzahlen
-        # -----------------------------------------------------
-        with st.expander("ⓘ Abkürzungen & Kennzahlen erklärt"):
-            st.markdown(
-                "<br>".join(
-                    f"{tooltip(term, explanation)} – {explanation}"
-                    for term, explanation in ABBREVIATION_HELP.items()
-                ),
-                unsafe_allow_html=True,
-            )
-
-        # -----------------------------------------------------
         # Chef-Scout Chat
         # -----------------------------------------------------
         st.divider()
@@ -1186,7 +1047,7 @@ Gehaltsdaten, Ablösen oder sonstige Informationen, die nicht in den Daten stehe
             st.chat_message("assistant").write(a)
 
         user_question = st.chat_input(
-            "z. B. Warum passt Kandidat 1 taktisch besser zum Suchprofil?"
+            "z. B. Welche Unterschiede gibt es zwischen Platz 1 und 2?"
         )
 
         if user_question:
