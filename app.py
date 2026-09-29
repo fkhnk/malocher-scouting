@@ -16,9 +16,7 @@ st.markdown("Universelle, datengestützte Spielersuche für Profivereine powered
 # API Key sichern (aus Secrets oder direkt)
 if "GEMINI_API_KEY" in st.secrets:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-else:
-    GEMINI_API_KEY = "AQ.Ab8RN6Iy8TKRCVtE_BUHCalfZZwiqynPV4_TFGo536gX6SW48A"
-
+    
 client = genai.Client(api_key=GEMINI_API_KEY)
 FALLBACK_MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-flash-latest']
 
