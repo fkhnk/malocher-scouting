@@ -29,15 +29,23 @@ st.markdown(
     " **Gemini & Cosine Similarity**"
 )
 
-# API Key sichern (aus Secrets oder direkt)
-if "GEMINI_API_KEY" in st.secrets:
-  GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+# API Key sicher aus Streamlit Secrets oder Umgebungsvariable laden
+import os
+
+GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
+
+if not GEMINI_API_KEY:
+    st.error(
+        "GEMINI_API_KEY fehlt. Bitte in Streamlit unter Settings → Secrets "
+        "als GEMINI_API_KEY hinterlegen."
+    )
+    st.stop()
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 FALLBACK_MODELS = [
-    'gemini-3.8-flash',
-    'gemini-3.5-flash',
-    'gemini-flash-latest',
+    "gemini-3.8-flash",
+    "gemini-3.5-flash",
+    "gemini-flash-latest",
 ]
 
 SKILL_MAP = {
@@ -194,6 +202,7 @@ if st.button("🔍 Scouting-Analyse starten"):
             """
 
       raw_text = None
+      model_errors = []
       for m in FALLBACK_MODELS:
         try:
           res = client.models.generate_content(
@@ -202,8 +211,8 @@ if st.button("🔍 Scouting-Analyse starten"):
           raw_text = res.text
           if raw_text:
             break
-        except Exception:
-          continue
+        except Exception as e:
+          model_errors.append(f"{m}: {type(e).__name__}: {e}")
 
       if raw_text:
         try:
@@ -220,10 +229,9 @@ if st.button("🔍 Scouting-Analyse starten"):
         except Exception as e:
           st.error(f"Fehler beim Parsen der Kriterien: {e}")
       else:
-        st.error(
-            "Verbindung zum KI-Modell fehlgeschlagen. Bitte erneut auf"
-            " 'Scouting-Analyse starten' klicken."
-        )
+        st.error("Gemini API konnte kein Modell erfolgreich aufrufen.")
+        with st.expander("Technische Fehlermeldung anzeigen"):
+          st.code("\n".join(model_errors) or "Keine Fehlermeldung erhalten.")
 
 # Auswertung anzeigen, wenn Kriterien im State sind
 if "params" in st.session_state:
