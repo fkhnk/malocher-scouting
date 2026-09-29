@@ -1,12 +1,3 @@
-Das stimmt, bei einem Radar-Chart geraten die Beschriftungen und die Legende bei mehreren Spielern schnell an ihre Grenzen und überlappen sich.
-
-Ein **Gruppiertes Säulendiagramm** ist hierfür die perfekte Lösung: Es ist übersichtlich, skaliert hervorragend mit mehreren Spielern und lässt sich im direkten Vergleich (Skill zu Skill) viel intuitiver lesen.
-
-Zusätzlich habe ich den **Detailvergleich komplett entfernt** (da das *Scouting Battle* das nun optimal abdeckt) und das neue Säulendiagramm in einen **klappbaren Bereich (Expander)** gepackt, sodass du es bei Bedarf ganz entspannt ein- und ausblenden kannst.
-
-Hier ist deine **komplette und aktualisierte `app.py**`:
-
-```python
 import json
 import re
 from io import BytesIO
@@ -1101,5 +1092,3 @@ else:
     st.info(
         "Starte eine Scouting-Analyse oder nutze einen der Schnellstart-Buttons."
     )
-
-```
