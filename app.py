@@ -362,7 +362,7 @@ if "params" in st.session_state:
       unsafe_allow_html=True,
   )
 
-with col2:
+    with col2:
   st.subheader("🥊 Direct Head-to-Head Spieler-Vergleich")
   player_list = top_matches["long_name"].tolist()
   p1_selected = st.selectbox("Spieler 1 auswählen:", player_list, index=0)
