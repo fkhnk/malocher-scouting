@@ -356,7 +356,6 @@ if "params" in st.session_state:
         """,
       unsafe_allow_html=True,
   )
-
 with col2:
   st.subheader("🥊 Direct Head-to-Head Spieler-Vergleich")
   player_list = top_matches["long_name"].tolist()
