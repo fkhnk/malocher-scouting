@@ -29,24 +29,18 @@ st.markdown(
     " **Gemini & Cosine Similarity**"
 )
 
-# API Key sicher aus Streamlit Secrets oder Umgebungsvariable laden
-import os
-
-GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
-
-if not GEMINI_API_KEY:
-    st.error(
-        "GEMINI_API_KEY fehlt. Bitte in Streamlit unter Settings → Secrets "
-        "als GEMINI_API_KEY hinterlegen."
-    )
-    st.stop()
+# API Key sichern (aus Secrets oder direkt)
+if "GEMINI_API_KEY" in st.secrets:
+  GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
 client = genai.Client(api_key=GEMINI_API_KEY)
+
+# Offizielle Endpunkte
 FALLBACK_MODELS = [
-    'gemini-3.8-flash',
-    'gemini-3.7-flash',
-    'gemini-3.6-flash',
-    'gemini-3.5-flash-lite',
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite",
 ]
 
 SKILL_MAP = {
@@ -134,7 +128,7 @@ malocher_mode = st.sidebar.checkbox(
     "⚒️ Malocher-Fokus erzwingen (Hoher Malocher-Index)", value=False
 )
 schnaeppchen_mode = st.sidebar.checkbox(
-    "Nur Schnäppchen & Talente (Hoher ROI-Score)", value=False
+    "💎 Nur Schnäppchen & Talente (Hoher ROI-Score)", value=False
 )
 
 override_max_value = st.sidebar.slider(
@@ -152,20 +146,56 @@ override_min_potential = st.sidebar.slider(
 )
 
 # ---------------------------------------------------------
-# Haupt-Eingabe
+# Haupt-Eingabe mit Form (Erlaubt Enter-Taste & Placeholder)
 # ---------------------------------------------------------
-user_prompt = st.text_input(
-    "Welches Profil suchst du und für welchen Verein?",
-    "Schlage mir einen spielstarken Innenverteidiger für Schalke 04 vor",
+st.markdown("Welches Profil suchst du und für welchen Verein?")
+
+# Session State für den Prompt initialisieren, falls Quick-Buttons genutzt werden
+if "selected_prompt" not in st.session_state:
+  st.session_state["selected_prompt"] = ""
+
+with st.form(key="search_form"):
+  user_prompt = st.text_input(
+      "Suchanfrage",
+      value=st.session_state["selected_prompt"],
+      placeholder="Schlage mir einen spielstarken Innenverteidiger für Schalke 04 vor",
+      label_visibility="collapsed",
+  )
+  submit_button = st.form_submit_button("🔍 Scouting-Analyse starten")
+
+# Quick-Start Buttons für die Präsentation
+st.markdown("⚡ **Schnellstart-Beispiele:**", unsafe_allow_html=True)
+qc1, qc2, qc3 = st.columns(3)
+if qc1.button("🔵 Schalke: IV gesucht"):
+  st.session_state["selected_prompt"] = (
+      "Schlage mir einen spielstarken Innenverteidiger für Schalke 04 vor"
+  )
+  st.rerun()
+if qc2.button("🟡 BVB: Offensives Talent"):
+  st.session_state["selected_prompt"] = (
+      "Finde ein junges Offensivtalent mit hohem ROI für Borussia Dortmund"
+  )
+  st.rerun()
+if qc3.button("⚒️ Bochum: Malocher im Mittelfeld"):
+  st.session_state["selected_prompt"] = (
+      "Ich suche einen zweikampfstarken Sechser mit hohem Malocher-Index für den VfL Bochum"
+  )
+  st.rerun()
+
+# Trigger bei Formular-Absenden oder wenn via Button gesetzt
+run_analysis = submit_button or (
+    user_prompt
+    and user_prompt != st.session_state.get("last_processed", "")
 )
 
-if st.button("🔍 Scouting-Analyse starten"):
+if run_analysis:
   if len(user_prompt.strip().split()) < 3:
     st.warning(
         "⚠️ Deine Anfrage ist sehr kurz! Bitte gib mindestens eine Position,"
         " eine Anforderung oder einen Wunschverein an."
     )
   else:
+    st.session_state["last_processed"] = user_prompt
     with st.spinner(
         "Malocher Scouting analysiert das Vereinsprofil und durchsucht die"
         " Datenbank..."
@@ -203,7 +233,7 @@ if st.button("🔍 Scouting-Analyse starten"):
             """
 
       raw_text = None
-      model_errors = []
+      last_error = None
       for m in FALLBACK_MODELS:
         try:
           res = client.models.generate_content(
@@ -213,7 +243,8 @@ if st.button("🔍 Scouting-Analyse starten"):
           if raw_text:
             break
         except Exception as e:
-          model_errors.append(f"{m}: {type(e).__name__}: {e}")
+          last_error = str(e)
+          continue
 
       if raw_text:
         try:
@@ -230,9 +261,10 @@ if st.button("🔍 Scouting-Analyse starten"):
         except Exception as e:
           st.error(f"Fehler beim Parsen der Kriterien: {e}")
       else:
-        st.error("Gemini API konnte kein Modell erfolgreich aufrufen.")
-        with st.expander("Technische Fehlermeldung anzeigen"):
-          st.code("\n".join(model_errors) or "Keine Fehlermeldung erhalten.")
+        st.error(
+            "⚠️ API-Limit erreicht (429 Resource Exhausted). Bitte warte einen"
+            f" Moment.\nDetails: {last_error}"
+        )
 
 # Auswertung anzeigen, wenn Kriterien im State sind
 if "params" in st.session_state:
@@ -340,7 +372,7 @@ if "params" in st.session_state:
         "potential": "Potenzial (POT)",
         "value_eur": "Marktwert (€)",
         "malocher_index": "⚒️ Malocher-Index",
-        "roi_score": "ROI-Faktor",
+        "roi_score": "💎 ROI-Faktor",
         "match_score_%": "Match-Score (%)",
     })
     display_matches.index.name = "Player ID"
@@ -355,7 +387,7 @@ if "params" in st.session_state:
         "OVR / POT", f"{top_player['overall']} / {top_player['potential']}"
     )
     m3.metric("⚒️ Malocher-Index", f"{top_player['malocher_index']} %")
-    m4.metric("ROI-Faktor", f"{top_player['roi_score']}")
+    m4.metric("💎 ROI-Faktor", f"{top_player['roi_score']}")
 
     col1, col2 = st.columns([1.2, 1])
 
@@ -365,91 +397,92 @@ if "params" in st.session_state:
 
       st.markdown(
           """
-    **💡 Kennzahlen-Erklärung:**
-    **ROI-Faktor (Return on Investment):** Quotient aus dem verbleibenden Entwicklungspotenzial (Potenzial minus aktuelle Stärke) und dem Marktwert in Millionen Euro. Höhere Werte signalisieren ein starkes Preis-Leistungs-Verhältnis bzw. hohes Talent zu geringen Kosten.
+            **💡 Kennzahlen-Erklärung:**• ⚒️ 
+        ** Malocher-Index:** Eine eigens entwickelte Kennzahl (Fokus auf Physis, Defensive & Tempo), die die arbeitsintensive Mentalität (Ruhrpott-Fokus) eines Spielers misst.
+        ** ROI-Faktor (Return on Investment):** Quotient aus dem verbleibenden Entwicklungspotenzial (Potenzial minus aktuelle Stärke) und dem Marktwert in Millionen Euro. Höhere Werte signalisieren ein starkes Preis-Leistungs-Verhältnis bzw. hohes Talent zu geringen Kosten.
         """,
       unsafe_allow_html=True,
-      )
+  )
 
-    with col2:
-      st.subheader("🥊 Direct Head-to-Head Spieler-Vergleich")
-      player_list = top_matches["long_name"].tolist()
-      p1_selected = st.selectbox("Spieler 1 auswählen:", player_list, index=0)
-      p2_selected = st.selectbox(
-          "Spieler 2 auswählen:",
-          player_list,
-          index=min(1, len(player_list) - 1),
-      )
+with col2:
+  st.subheader("🥊 Direct Head-to-Head Spieler-Vergleich")
+  player_list = top_matches["long_name"].tolist()
+  p1_selected = st.selectbox("Spieler 1 auswählen:", player_list, index=0)
+  p2_selected = st.selectbox(
+      "Spieler 2 auswählen:",
+      player_list,
+      index=min(1, len(player_list) - 1),
+  )
 
-      if p1_selected and p2_selected:
-        p1_data = df[df["long_name"] == p1_selected].iloc[0]
-        p2_data = df[df["long_name"] == p2_selected].iloc[0]
+  if p1_selected and p2_selected:
+    p1_data = df[df["long_name"] == p1_selected].iloc[0]
+    p2_data = df[df["long_name"] == p2_selected].iloc[0]
 
-        german_skill_labels = [
-            SKILL_MAP[col].upper() for col in skill_columns
-        ]
-        categories = skill_columns
+    german_skill_labels = [
+        SKILL_MAP[col].upper() for col in skill_columns
+    ]
+    categories = skill_columns
 
-        v1 = p1_data[categories].values.tolist() + [
-            p1_data[categories].values[0]
-        ]
-        v2 = p2_data[categories].values.tolist() + [
-            p2_data[categories].values[0]
-        ]
-        angles = [
-            n / float(len(categories)) * 2 * np.pi
-            for n in range(len(categories))
-        ] + [0]
+    v1 = p1_data[categories].values.tolist() + [
+        p1_data[categories].values[0]
+    ]
+    v2 = p2_data[categories].values.tolist() + [
+        p2_data[categories].values[0]
+    ]
+    angles = [
+        n / float(len(categories)) * 2 * np.pi
+        for n in range(len(categories))
+    ] + [0]
 
-        fig, ax = plt.subplots(figsize=(5, 5), subplot_kw=dict(polar=True))
-        fig.patch.set_facecolor("#0e1117")
-        ax.set_facecolor("#161b26")
-        ax.tick_params(colors="white")
+    fig, ax = plt.subplots(figsize=(5, 5), subplot_kw=dict(polar=True))
+    fig.patch.set_facecolor("#0e1117")
+    ax.set_facecolor("#161b26")
+    ax.tick_params(colors="white")
 
-        plt.xticks(angles[:-1], german_skill_labels, color="white")
-        ax.plot(angles, v1, label=p1_selected, color="#004D98", linewidth=2)
-        ax.plot(angles, v2, label=p2_selected, color="#E30613", linewidth=2)
-        ax.fill(angles, v1, alpha=0.15, color="#004D98")
-        ax.fill(angles, v2, alpha=0.15, color="#E30613")
-        plt.legend(loc="lower right")
-        st.pyplot(fig)
+    plt.xticks(angles[:-1], german_skill_labels, color="white")
+    ax.plot(angles, v1, label=p1_selected, color="#004D98", linewidth=2)
+    ax.plot(angles, v2, label=p2_selected, color="#E30613", linewidth=2)
+    ax.fill(angles, v1, alpha=0.15, color="#004D98")
+    ax.fill(angles, v2, alpha=0.15, color="#E30613")
+    plt.legend(loc="lower right")
+    st.pyplot(fig)
 
-    st.subheader(f"📝 Scouting-Bericht für {detected_club}")
-    report_prompt = f"""
-        Du bist Chef-Scout bei {detected_club}. 
-        Anfrage des Managements: '{user_prompt}'. 
+st.subheader(f"📝 Scouting-Bericht für {detected_club}")
+report_prompt = f"""
+    Du bist Chef-Scout bei {detected_club}. 
+    Anfrage des Managements: '{user_prompt}'. 
     
-        Hier sind die datenbasierten Top-Kandidaten:
-        {top_matches.to_string()}
+    Hier sind die datenbasierten Top-Kandidaten:
+    {top_matches.to_string()}
     
-        Schreibe einen professionellen, fundierten Scouting-Bericht direkt an die Vereinsführung.
-        Gehe explizit auf den ⚒️ Malocher-Index (Physis/Einsatz) und den 💎 ROI-Faktor (Entwicklungspotenzial) ein.
-        """
-    rep_text = None
-    for m in FALLBACK_MODELS:
-      try:
-        rep_text = client.models.generate_content(
-            model=m, contents=report_prompt
-        ).text
-        if rep_text:
-          break
-      except Exception:
-        continue
-
+    Schreibe einen professionellen, fundierten Scouting-Bericht direkt an die Vereinsführung.
+    Gehe explizit auf den ⚒️ Malocher-Index (Physis/Einsatz) und den 💎 ROI-Faktor (Entwicklungspotenzial) ein.
+    """
+rep_text = None
+for m in FALLBACK_MODELS:
+  try:
+    rep_text = client.models.generate_content(
+        model=m, contents=report_prompt
+    ).text
     if rep_text:
-      st.markdown(rep_text)
-      try:
-        pdf_bytes = create_pdf_report(
-            detected_club, user_prompt, rep_text, top_matches
-        )
-        st.download_button(
-            label="📄 Scouting-Bericht als PDF herunterladen",
-            data=bytes(pdf_bytes),
-            file_name=f"Scouting_Bericht_{detected_club}.pdf",
-            mime="application/pdf",
-        )
-      except Exception:
-        pass
+      break
+  except Exception:
+    continue
+
+if rep_text:
+  st.markdown(rep_text)
+  try:
+    pdf_bytes = create_pdf_report(
+        detected_club, user_prompt, rep_text, top_matches
+    )
+    st.download_button(
+        label="📄 Scouting-Bericht als PDF herunterladen",
+        data=bytes(pdf_bytes),
+        file_name=f"Scouting_Bericht_{detected_club}.pdf",
+        mime="application/pdf",
+    )
+  except Exception:
+    pass
 
 st.divider()
 st.subheader("💬 Frage den Chef-Scout")
