@@ -401,8 +401,8 @@ if "params" in st.session_state:
       st.markdown(
           """
             **💡 Kennzahlen-Erklärung:**• ⚒️ 
-        ** Malocher-Index:** Eine eigens entwickelte Kennzahl (Fokus auf Physis, Defensive & Tempo), die die arbeitsintensive Mentalität (Ruhrpott-Fokus) eines Spielers misst.
-        ** ROI-Faktor (Return on Investment):** Quotient aus dem verbleibenden Entwicklungspotenzial (Potenzial minus aktuelle Stärke) und dem Marktwert in Millionen Euro. Höhere Werte signalisieren ein starkes Preis-Leistungs-Verhältnis bzw. hohes Talent zu geringen Kosten.
+            Malocher-Index: Eine eigens entwickelte Kennzahl (Fokus auf Physis, Defensive & Tempo), die die arbeitsintensive Mentalität (Ruhrpott-Fokus) eines Spielers misst.
+            ROI-Faktor (Return on Investment):** Quotient aus dem verbleibenden Entwicklungspotenzial (Potenzial minus aktuelle Stärke) und dem Marktwert in Millionen Euro. Höhere Werte signalisieren ein starkes Preis-Leistungs-Verhältnis bzw. hohes Talent zu geringen Kosten.
         """,
       unsafe_allow_html=True,
   )
