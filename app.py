@@ -21,7 +21,7 @@ st.set_page_config(
     page_icon="⚒️",
 )
 
-st.title("⚒️ Malocher Scouting ⚒️")
+st.title("⚒️ Malocher Scouting")
 st.markdown(
     "Universelle, datengestützte Spielersuche & Recommender System powered by "
     "**Gemini, Cosine Similarity & Tactical Fit**"
@@ -151,6 +151,39 @@ def gemini_generate(prompt):
         except Exception as exc:
             last_error = str(exc)
     return None, last_error
+
+
+# ---------------------------------------------------------
+# Perzentil- & Badge-Berechnung (Option 4)
+# ---------------------------------------------------------
+def get_player_badges(player_row, full_df):
+    badges = []
+    pos = str(player_row["player_positions"]).split(",")[0].strip()
+    pos_df = full_df[full_df["player_positions"].astype(str).str.contains(pos, na=False)]
+    if pos_df.empty or len(pos_df) < 10:
+        pos_df = full_df
+
+    for col, name in [
+        ("physic", "Physis"),
+        ("defending", "Defensive"),
+        ("pace", "Tempo"),
+        ("roi_score", "ROI"),
+        ("malocher_index", "Malocher-Index"),
+    ]:
+        val = player_row[col]
+        pct = (pos_df[col] < val).mean() * 100
+        top_pct = 100 - pct
+        if top_pct <= 5:
+            badges.append(f"🥇 Top {max(1, int(top_pct))}% {name} ({pos})")
+        elif top_pct <= 15:
+            badges.append(f"⭐ Top {int(top_pct)}% {name} ({pos})")
+
+    if player_row["malocher_index"] >= 80:
+        badges.append("⚒️ Elite-Malocher")
+    if player_row["roi_score"] >= 2.0:
+        badges.append("💎 High-ROI Talent")
+
+    return badges
 
 
 # ---------------------------------------------------------
@@ -288,7 +321,7 @@ def calculate_tactical_fit(dataframe, weights):
 
 
 # ---------------------------------------------------------
-# PDF
+# PDF Helper Functions
 # ---------------------------------------------------------
 def _pdf_safe_text(value):
     """Sanitize AI/user text for FPDF's built-in Helvetica font."""
@@ -405,8 +438,36 @@ def create_pdf_report(club_name, query, report_text, top_matches_df):
     return output.encode("latin-1") if isinstance(output, str) else bytes(output)
 
 
+def create_shortlist_pdf(shortlist_df):
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_margins(10, 10, 10)
+    pdf.add_page()
+
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.cell(0, 10, "MALOCHER SCOUTING - SHORTLIST BERICHT", ln=True, align="C")
+    pdf.line(10, pdf.get_y() + 2, 200, pdf.get_y() + 2)
+    pdf.ln(8)
+
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(0, 7, f"Anzahl gespeicherter Spieler: {len(shortlist_df)}", ln=True)
+    pdf.ln(4)
+
+    for _, row in shortlist_df.iterrows():
+        line = (
+            f"{row['long_name']} | Alter: {int(row['age'])} | Pos: {row['player_positions']} | "
+            f"OVR: {int(row['overall'])} | POT: {int(row['potential'])} | "
+            f"Marktwert: {row['value_eur']/1e6:.2f} Mio. EUR | Malocher: {row['malocher_index']} | ROI: {row['roi_score']}"
+        )
+        _pdf_multiline(pdf, line, height=6, size=10)
+        pdf.ln(2)
+
+    output = pdf.output(dest="S")
+    return output.encode("latin-1") if isinstance(output, str) else bytes(output)
+
+
 # ---------------------------------------------------------
-# Sidebar (Regler auf Maximalwerte gesetzt)
+# Sidebar
 # ---------------------------------------------------------
 st.sidebar.header("🎛️ Hybrid-Suche & Feinjustierung")
 st.sidebar.markdown(
@@ -443,10 +504,13 @@ override_min_potential = st.sidebar.slider(
     "Mindest-Potenzial (POT)",
     min_value=60,
     max_value=95,
-    value=95,
+    value=60,
     help="Mindestwert für das erwartete Maximalpotenzial (POT)."
 )
 
+# ---------------------------------------------------------
+# Option 1: Shortlist-Export (CSV & PDF)
+# ---------------------------------------------------------
 st.sidebar.divider()
 st.sidebar.subheader("⭐ Meine Shortlist")
 
@@ -457,8 +521,85 @@ if st.session_state["shortlist"]:
         if s_col2.button("×", key=f"remove_{player_name}"):
             st.session_state["shortlist"].remove(player_name)
             st.rerun()
+
+    st.sidebar.markdown("---")
+    short_df = df[df["long_name"].isin(st.session_state["shortlist"])].copy()
+
+    # CSV Export
+    csv_data = short_df.to_csv(index=False).encode("utf-8")
+    st.sidebar.download_button(
+        label="📥 Shortlist als CSV",
+        data=csv_data,
+        file_name="malocher_shortlist.csv",
+        mime="text/csv",
+        key="download_csv_shortlist",
+    )
+
+    # PDF Export
+    try:
+        pdf_short_bytes = create_shortlist_pdf(short_df)
+        st.sidebar.download_button(
+            label="📄 Shortlist als PDF",
+            data=pdf_short_bytes,
+            file_name="malocher_shortlist.pdf",
+            mime="application/pdf",
+            key="download_pdf_shortlist",
+        )
+    except Exception as pdf_err:
+        st.sidebar.caption(f"PDF-Export Fehler: {pdf_err}")
 else:
     st.sidebar.caption("Noch keine Spieler gespeichert.")
+
+# ---------------------------------------------------------
+# Option 2: Einzelspieler-Lookup / Steckbrief-Suche
+# ---------------------------------------------------------
+with st.expander("👤 Einzelspieler-Lookup / Steckbrief-Suche", expanded=False):
+    lookup_player_name = st.selectbox(
+        "Spieler auswählen oder suchen:",
+        options=[""] + list(df["long_name"].dropna().sort_values().unique()),
+        index=0,
+        key="lookup_selectbox",
+    )
+    if lookup_player_name:
+        p_row = df[df["long_name"] == lookup_player_name].iloc[0]
+
+        col_p1, col_p2 = st.columns([1, 2])
+        with col_p1:
+            st.subheader(p_row["long_name"])
+            st.write(f"**Alter:** {int(p_row['age'])} Jahre | **Position:** {p_row['player_positions']}")
+            st.write(f"**Marktwert:** {p_row['value_eur']/1e6:.2f} Mio. €")
+            st.metric("OVR / POT", f"{int(p_row['overall'])} / {int(p_row['potential'])}")
+            st.metric("⚒️ Malocher-Index", f"{p_row['malocher_index']:.1f}")
+            st.metric("💎 ROI-Faktor", f"{p_row['roi_score']:.2f}")
+
+            # Shortlist Toggle Button
+            is_in_sl = p_row["long_name"] in st.session_state["shortlist"]
+            sl_btn_label = "✓ Auf Shortlist" if is_in_sl else "⭐ Zur Shortlist hinzufügen"
+            if st.button(sl_btn_label, key=f"lookup_sl_{p_row['long_name']}"):
+                if is_in_sl:
+                    st.session_state["shortlist"].remove(p_row["long_name"])
+                else:
+                    st.session_state["shortlist"].append(p_row["long_name"])
+                st.rerun()
+
+        with col_p2:
+            st.write("**Attribute & Skills:**")
+            for skill_key, skill_label in SKILL_MAP.items():
+                s_val = int(p_row[skill_key])
+                st.write(f"**{skill_label}:** {s_val}")
+                st.progress(min(max(s_val, 0), 100))
+
+            # Option 4: Badges für Lookup-Spieler anzeigen
+            l_badges = get_player_badges(p_row, df)
+            if l_badges:
+                st.write("**🏷️ Auszeichnungen & Liga-Ranking:**")
+                badge_html = " ".join(
+                    [
+                        f"{b}"
+                        for b in l_badges
+                    ]
+                )
+                st.markdown(badge_html, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
 # Search Input
@@ -591,7 +732,7 @@ if "params" in st.session_state:
     )
     max_a = min(params.get("max_age") or 99, override_max_age)
     min_pot = max(params.get("min_potential") or 0, 0)
-    min_pot = min(min_pot, override_min_potential)
+    min_pot = max(min_pot, override_min_potential)
 
     filtered_df = filtered_df[
         (filtered_df["value_eur"] <= max_val)
@@ -666,7 +807,7 @@ if "params" in st.session_state:
         else:
             filtered_df["match_score_%"] = np.nan
 
-        # Verwendete Gesamtreihung: Tactical Fit + Potenzial + Value
+        # Verwendete Gesamtreihung
         max_roi = max(float(filtered_df["roi_score"].max()), 0.1)
         filtered_df["roi_norm"] = np.clip(
             filtered_df["roi_score"] / max_roi * 100, 0, 100
@@ -703,7 +844,6 @@ if "params" in st.session_state:
 
         top_matches = results.head(5).copy()
         
-        # In Session State speichern für den Chat
         st.session_state["top_matches"] = top_matches
         st.session_state["tactical_labels"] = tactical_labels
 
@@ -717,23 +857,38 @@ if "params" in st.session_state:
         m2.metric(
             "OVR / POT",
             f"{int(top_player['overall'])} / {int(top_player['potential'])}",
-            help="OVR = Overall Rating (Aktuelle Gesamtstärke) | POT = Potential (Erwartete maximale Gesamtstärke)"
+            help="OVR = Overall Rating | POT = Potential"
         )
         m3.metric(
             "🎯 Tactical Fit", 
             f"{top_player['tactical_fit']:.1f}", 
-            help="Taktische Passung (0-100) der Spieler-Skills zum erkannten Anforderungsprofil."
+            help="Taktische Passung (0-100) der Spieler-Skills zum Anforderungsprofil."
         )
         m4.metric(
             "⚒️ Malocher-Index", 
             f"{top_player['malocher_index']:.1f}", 
-            help="Arbeits- und Einsatzindex, berechnet aus: Physis (45%) + Defensive (35%) + Tempo (20%)."
+            help="Arbeits- und Einsatzindex: Physis (45%) + Defensive (35%) + Tempo (20%)."
         )
         m5.metric(
             "💎 ROI-Faktor", 
             f"{top_player['roi_score']:.2f}", 
-            help="Return on Investment: Verhältnis aus Entwicklungspotenzial (POT - OVR) zum aktuellen Marktwert in Mio. €."
+            help="Return on Investment: Verhältnis aus Potenzial-Wachstum zum Marktwert in Mio. €."
         )
+
+        # -----------------------------------------------------
+        # Option 4: Kontext-Badges & Liga-Ranking
+        # -----------------------------------------------------
+        top_badges = get_player_badges(top_player, df)
+        if top_badges:
+            st.markdown("**🏷️ Auszeichnungen & Liga-Ranking:**")
+            badge_html = " ".join(
+                [
+                    f"{b}"
+                    for b in top_badges
+                ]
+            )
+            st.markdown(badge_html, unsafe_allow_html=True)
+            st.write("")
 
         # -----------------------------------------------------
         # Explainability
@@ -817,23 +972,18 @@ if "params" in st.session_state:
             column_config={
                 "Spieler": st.column_config.TextColumn("Spieler", help="Vollständiger Name des Spielers"),
                 "Alter": st.column_config.NumberColumn("Alter", help="Alter in Jahren"),
-                "Position": st.column_config.TextColumn("Position", help="Spielpositionen (z.B. CB, CDM, ST)"),
-                "OVR": st.column_config.NumberColumn("OVR", help="Overall Rating: Aktuelle Gesamtstärke (0-99)"),
-                "POT": st.column_config.NumberColumn("POT", help="Potential: Erwartete maximale Gesamtstärke (0-99)"),
-                "Marktwert": st.column_config.TextColumn("Marktwert", help="Aktueller Marktwert in Millionen Euro"),
-                "🎯 Tactical Fit": st.column_config.NumberColumn("🎯 Tactical Fit", help="Taktische Passung (0-100) zum Anforderungsprofil"),
-                "⚒️ Malocher": st.column_config.NumberColumn("⚒ Malocher", help="Malocher-Index: Physis (45%) + Defensive (35%) + Tempo (20%)"),
-                "💎 ROI": st.column_config.NumberColumn("💎 ROI", help="Return on Investment: Potenzial-Wachstum geteilt durch Marktwert in Mio. €"),
-                "Match-Score": st.column_config.NumberColumn("Match-Score", help="Ähnlichkeit in % zu einem gesuchten Referenzspieler (Cosine Similarity)"),
-                "Scouting Score": st.column_config.NumberColumn("Scouting Score", help="Gesamt-Priorisierungsscore der KI aus Tactical Fit, Potenzial, ROI und OVR"),
+                "Position": st.column_config.TextColumn("Position", help="Spielpositionen"),
+                "OVR": st.column_config.NumberColumn("OVR", help="Overall Rating (0-99)"),
+                "POT": st.column_config.NumberColumn("POT", help="Potential (0-99)"),
+                "Marktwert": st.column_config.TextColumn("Marktwert", help="Aktueller Marktwert in Mio. €"),
+                "🎯 Tactical Fit": st.column_config.NumberColumn("🎯 Tactical Fit", help="Taktische Passung (0-100)"),
+                "⚒️ Malocher": st.column_config.NumberColumn("⚒ Malocher", help="Malocher-Index: Physis (45%) + Def (35%) + Tempo (20%)"),
+                "💎 ROI": st.column_config.NumberColumn("💎 ROI", help="Return on Investment"),
+                "Match-Score": st.column_config.NumberColumn("Match-Score", help="Ähnlichkeit in % zu gesuchtem Referenzspieler"),
+                "Scouting Score": st.column_config.NumberColumn("Scouting Score", help="Priorisierungsscore der KI"),
             },
             use_container_width=True, 
             hide_index=True
-        )
-
-        st.caption(
-            "Scouting Score kombiniert Tactical Fit, Ähnlichkeit (falls vorhanden), "
-            "Potenzial, ROI und OVR. Er dient als technische Priorisierung und ersetzt keine menschliche Bewertung."
         )
 
         save_cols = st.columns(len(top_matches))
@@ -892,15 +1042,6 @@ if "params" in st.session_state:
             )
             st.dataframe(
                 hg_display, 
-                column_config={
-                    "Spieler": st.column_config.TextColumn("Spieler", help="Name des Talents"),
-                    "Alter": st.column_config.NumberColumn("Alter", help="Alter in Jahren"),
-                    "OVR": st.column_config.NumberColumn("OVR", help="Aktuelle Gesamtstärke (Overall)"),
-                    "POT": st.column_config.NumberColumn("POT", help="Erwartetes Maximalpotenzial"),
-                    "Marktwert": st.column_config.TextColumn("Marktwert", help="Aktueller Marktwert in Mio. €"),
-                    "Tactical Fit": st.column_config.NumberColumn("Tactical Fit", help="Taktische Passung (0-100)"),
-                    "ROI": st.column_config.NumberColumn("ROI", help="Verhältnis von Potenzialwachstum zu Marktwert"),
-                },
                 use_container_width=True, 
                 hide_index=True
             )
@@ -943,9 +1084,7 @@ if "params" in st.session_state:
                 "Marktwert (€)",
             ]
             st.dataframe(compare_df, use_container_width=True)
-            st.caption("ℹ️ **Kennzahlen-Erklärung:** **OVR** = Aktuelle Stärke | **POT** = Potenzial | **Tactical Fit** = Taktische Passung | **Malocher-Index** = Physis/Defensive/Tempo-Wert | **ROI-Faktor** = Potenzialwachstum pro Mio. € Marktwert.")
 
-            # Ein-/ausblendbares Säulendiagramm (Gruppiertes Bar Chart)
             with st.expander("📊 Skill-Vergleich (Säulendiagramm) anzeigen", expanded=False):
                 radar_names = selected_players[:5]
                 categories = skill_columns
@@ -1057,7 +1196,7 @@ else:
     )
 
 # ---------------------------------------------------------
-# Malocher Scout Chat (IMMER VERFÜGBAR AUCH AUF STARTSEITE)
+# Malocher Scout Chat
 # ---------------------------------------------------------
 st.divider()
 st.subheader("💬 Frage den Malocher Scout")
@@ -1073,10 +1212,8 @@ user_question = st.chat_input(
 if user_question:
     st.chat_message("user").write(user_question)
 
-    # 1. Automatische Erkennung & Suche nach genannten Spielern im Gesamtdatensatz (df)
     mentioned_players_data = ""
     for name in df["long_name"].dropna().unique():
-        # Suche nach signifikanten Namensteilen (> 3 Zeichen)
         name_parts = [p for p in str(name).split() if len(p) > 3]
         if any(part.lower() in user_question.lower() for part in name_parts):
             player_row = df[df["long_name"] == name].iloc[0]
@@ -1089,7 +1226,6 @@ if user_question:
             )
             break
 
-    # 2. Kontext für Top-Kandidaten aus der Session holen (falls vorhanden)
     top_matches_session = st.session_state.get("top_matches")
     if top_matches_session is not None and not top_matches_session.empty:
         top_context = top_matches_session[['long_name', 'age', 'overall', 'potential', 'value_eur', 'player_positions', 'malocher_index', 'roi_score']].to_string(index=False)
