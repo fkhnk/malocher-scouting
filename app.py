@@ -1,3 +1,12 @@
+Das stimmt, bei einem Radar-Chart geraten die Beschriftungen und die Legende bei mehreren Spielern schnell an ihre Grenzen und überlappen sich.
+
+Ein **Gruppiertes Säulendiagramm** ist hierfür die perfekte Lösung: Es ist übersichtlich, skaliert hervorragend mit mehreren Spielern und lässt sich im direkten Vergleich (Skill zu Skill) viel intuitiver lesen.
+
+Zusätzlich habe ich den **Detailvergleich komplett entfernt** (da das *Scouting Battle* das nun optimal abdeckt) und das neue Säulendiagramm in einen **klappbaren Bereich (Expander)** gepackt, sodass du es bei Bedarf ganz entspannt ein- und ausblenden kannst.
+
+Hier ist deine **komplette und aktualisierte `app.py**`:
+
+```python
 import json
 import re
 from io import BytesIO
@@ -943,39 +952,57 @@ if "params" in st.session_state:
             st.dataframe(compare_df, use_container_width=True)
             st.caption("ℹ️ **Kennzahlen-Erklärung:** **OVR** = Aktuelle Stärke | **POT** = Potenzial | **Tactical Fit** = Taktische Passung | **Malocher-Index** = Physis/Defensive/Tempo-Wert | **ROI-Faktor** = Potenzialwachstum pro Mio. € Marktwert.")
 
-            # Ein-/ausblendbares Radar-Chart
-            with st.expander("📊 Radar-Chart (Skill-Vergleich) anzeigen", expanded=False):
+            # Ein-/ausblendbares Säulendiagramm (Gruppiertes Bar Chart)
+            with st.expander("📊 Skill-Vergleich (Säulendiagramm) anzeigen", expanded=False):
                 radar_names = selected_players[:5]
                 categories = skill_columns
-                angles = np.linspace(
-                    0,
-                    2 * np.pi,
-                    len(categories),
-                    endpoint=False,
-                ).tolist()
-                angles += angles[:1]
+                labels = [SKILL_MAP[c].upper() for c in categories]
 
-                fig, ax = plt.subplots(
-                    figsize=(4.5, 4.5),
-                    subplot_kw={"polar": True},
-                )
+                x = np.arange(len(categories))
+                num_players = len(radar_names)
+                width = 0.8 / num_players
+
+                fig, ax = plt.subplots(figsize=(9, 5))
                 fig.patch.set_facecolor("#0e1117")
                 ax.set_facecolor("#161b26")
-                ax.tick_params(colors="white", labelsize=8)
-                ax.set_xticks(angles[:-1])
-                ax.set_xticklabels(
-                    [SKILL_MAP[c].upper() for c in categories],
-                    color="white",
-                )
-                ax.set_ylim(0, 100)
+                ax.tick_params(colors="white", labelsize=9)
+                ax.spines["bottom"].set_color("white")
+                ax.spines["left"].set_color("white")
+                ax.spines["top"].set_visible(False)
+                ax.spines["right"].set_visible(False)
+                ax.yaxis.grid(True, linestyle="--", alpha=0.3, color="white")
+                ax.set_axisbelow(True)
 
-                for player_name in radar_names:
+                colors = ["#004D98", "#E30613", "#28a745", "#ffc107", "#17a2b8"]
+
+                for i, player_name in enumerate(radar_names):
                     player_row = df[df["long_name"] == player_name].iloc[0]
                     values = [float(player_row[c]) for c in categories]
-                    values += values[:1]
-                    ax.plot(angles, values, linewidth=2, label=player_name)
+                    offset = (i - num_players / 2 + 0.5) * width
+                    ax.bar(
+                        x + offset,
+                        values,
+                        width,
+                        label=player_name,
+                        color=colors[i % len(colors)],
+                        alpha=0.9,
+                    )
 
-                ax.legend(loc="upper right", bbox_to_anchor=(1.35, 1.15), fontsize=8)
+                ax.set_xticks(x)
+                ax.set_xticklabels(labels, color="white", fontweight="bold")
+                ax.set_ylabel("Skill-Wert (0-100)", color="white", fontsize=10)
+                ax.set_ylim(0, 105)
+                ax.tick_params(axis="y", colors="white")
+
+                ax.legend(
+                    loc="upper center",
+                    bbox_to_anchor=(0.5, 1.18),
+                    ncol=min(num_players, 3),
+                    facecolor="#161b26",
+                    edgecolor="none",
+                    labelcolor="white",
+                    fontsize=9,
+                )
                 fig.tight_layout()
                 st.pyplot(fig)
                 plt.close(fig)
@@ -1074,3 +1101,5 @@ else:
     st.info(
         "Starte eine Scouting-Analyse oder nutze einen der Schnellstart-Buttons."
     )
+
+```
