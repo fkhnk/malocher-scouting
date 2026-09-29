@@ -13,7 +13,7 @@ st.set_page_config(
     page_title="Malocher Scouting ⚒️", layout="wide", page_icon="⚒️"
 )
 
-st.title("⚒️ Malocher Scouting")
+st.title("Malocher Scouting ⚒️")
 st.markdown(
     "Universelle, datengestützte Spielersuche & Recommender System powered by **Gemini & Cosine Similarity**"
 )
