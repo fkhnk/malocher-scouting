@@ -810,7 +810,6 @@ if "params" in st.session_state:
             }
         )
         
-        # DataFrame mit Tooltips (i-Symbolen) über column_config
         st.dataframe(
             table_df, 
             column_config={
@@ -821,7 +820,7 @@ if "params" in st.session_state:
                 "POT": st.column_config.NumberColumn("POT", help="Potential: Erwartete maximale Gesamtstärke (0-99)"),
                 "Marktwert": st.column_config.TextColumn("Marktwert", help="Aktueller Marktwert in Millionen Euro"),
                 "🎯 Tactical Fit": st.column_config.NumberColumn("🎯 Tactical Fit", help="Taktische Passung (0-100) zum Anforderungsprofil"),
-                "⚒️ Malocher": st.column_config.NumberColumn("⚒️️ Malocher", help="Malocher-Index: Physis (45%) + Defensive (35%) + Tempo (20%)"),
+                "⚒️ Malocher": st.column_config.NumberColumn("⚒ Malocher", help="Malocher-Index: Physis (45%) + Defensive (35%) + Tempo (20%)"),
                 "💎 ROI": st.column_config.NumberColumn("💎 ROI", help="Return on Investment: Potenzial-Wachstum geteilt durch Marktwert in Mio. €"),
                 "Match-Score": st.column_config.NumberColumn("Match-Score", help="Ähnlichkeit in % zu einem gesuchten Referenzspieler (Cosine Similarity)"),
                 "Scouting Score": st.column_config.NumberColumn("Scouting Score", help="Gesamt-Priorisierungsscore der KI aus Tactical Fit, Potenzial, ROI und OVR"),
@@ -944,94 +943,44 @@ if "params" in st.session_state:
             st.dataframe(compare_df, use_container_width=True)
             st.caption("ℹ️ **Kennzahlen-Erklärung:** **OVR** = Aktuelle Stärke | **POT** = Potenzial | **Tactical Fit** = Taktische Passung | **Malocher-Index** = Physis/Defensive/Tempo-Wert | **ROI-Faktor** = Potenzialwachstum pro Mio. € Marktwert.")
 
-            radar_names = selected_players[:5]
-            categories = skill_columns
-            angles = np.linspace(
-                0,
-                2 * np.pi,
-                len(categories),
-                endpoint=False,
-            ).tolist()
-            angles += angles[:1]
+            # Ein-/ausblendbares Radar-Chart
+            with st.expander("📊 Radar-Chart (Skill-Vergleich) anzeigen", expanded=False):
+                radar_names = selected_players[:5]
+                categories = skill_columns
+                angles = np.linspace(
+                    0,
+                    2 * np.pi,
+                    len(categories),
+                    endpoint=False,
+                ).tolist()
+                angles += angles[:1]
 
-            fig, ax = plt.subplots(
-                figsize=(6, 6),
-                subplot_kw={"polar": True},
-            )
-            fig.patch.set_facecolor("#0e1117")
-            ax.set_facecolor("#161b26")
-            ax.tick_params(colors="white")
-            ax.set_xticks(angles[:-1])
-            ax.set_xticklabels(
-                [SKILL_MAP[c].upper() for c in categories],
-                color="white",
-            )
-            ax.set_ylim(0, 100)
+                fig, ax = plt.subplots(
+                    figsize=(4.5, 4.5),
+                    subplot_kw={"polar": True},
+                )
+                fig.patch.set_facecolor("#0e1117")
+                ax.set_facecolor("#161b26")
+                ax.tick_params(colors="white", labelsize=8)
+                ax.set_xticks(angles[:-1])
+                ax.set_xticklabels(
+                    [SKILL_MAP[c].upper() for c in categories],
+                    color="white",
+                )
+                ax.set_ylim(0, 100)
 
-            for player_name in radar_names:
-                player_row = df[df["long_name"] == player_name].iloc[0]
-                values = [float(player_row[c]) for c in categories]
-                values += values[:1]
-                ax.plot(angles, values, linewidth=2, label=player_name)
+                for player_name in radar_names:
+                    player_row = df[df["long_name"] == player_name].iloc[0]
+                    values = [float(player_row[c]) for c in categories]
+                    values += values[:1]
+                    ax.plot(angles, values, linewidth=2, label=player_name)
 
-            ax.legend(loc="lower left", bbox_to_anchor=(1.02, 0.0))
-            st.pyplot(fig)
-            plt.close(fig)
+                ax.legend(loc="upper right", bbox_to_anchor=(1.35, 1.15), fontsize=8)
+                fig.tight_layout()
+                st.pyplot(fig)
+                plt.close(fig)
         else:
             st.caption("Bitte mindestens zwei Spieler auswählen.")
-
-        # -----------------------------------------------------
-        # Original Head-to-Head detail
-        # -----------------------------------------------------
-        st.markdown("### 📈 Detailvergleich")
-        detail_col1, detail_col2 = st.columns(2)
-        detail_players = top_matches["long_name"].tolist()
-        p1_selected = detail_col1.selectbox(
-            "Spieler 1",
-            detail_players,
-            index=0,
-            key="detail_p1",
-        )
-        p2_selected = detail_col2.selectbox(
-            "Spieler 2",
-            detail_players,
-            index=min(1, len(detail_players) - 1),
-            key="detail_p2",
-        )
-
-        if p1_selected and p2_selected:
-            p1_data = df[df["long_name"] == p1_selected].iloc[0]
-            p2_data = df[df["long_name"] == p2_selected].iloc[0]
-            labels = [SKILL_MAP[col].upper() for col in skill_columns]
-            categories = skill_columns
-
-            v1 = p1_data[categories].tolist()
-            v2 = p2_data[categories].tolist()
-            v1 += v1[:1]
-            v2 += v2[:1]
-            angles = np.linspace(
-                0,
-                2 * np.pi,
-                len(categories),
-                endpoint=False,
-            ).tolist()
-            angles += angles[:1]
-
-            fig, ax = plt.subplots(
-                figsize=(5, 5),
-                subplot_kw={"polar": True},
-            )
-            fig.patch.set_facecolor("#0e1117")
-            ax.set_facecolor("#161b26")
-            ax.tick_params(colors="white")
-            ax.set_xticks(angles[:-1])
-            ax.set_xticklabels(labels, color="white")
-            ax.set_ylim(0, 100)
-            ax.plot(angles, v1, label=p1_selected, linewidth=2)
-            ax.plot(angles, v2, label=p2_selected, linewidth=2)
-            ax.legend(loc="lower left", bbox_to_anchor=(1.02, 0.0))
-            st.pyplot(fig)
-            plt.close(fig)
 
         # -----------------------------------------------------
         # AI Scouting Report
