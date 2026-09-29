@@ -10,7 +10,7 @@ from sklearn.preprocessing import MinMaxScaler
 import streamlit as st
 
 # ---------------------------------------------------------
-# Page Config & Custom Styling (Königsblau & Dark Theme)
+# Page Config & Custom Styling
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="Malocher Scouting ⚒️", layout="wide", page_icon="⚒️"
@@ -25,12 +25,15 @@ st.markdown(
 
 st.title("⚒️ Malocher Scouting")
 st.markdown(
-    "Universelle, datengestützte Spielersuche & Recommender System powered by **Gemini & Cosine Similarity**"
+    "Universelle, datengestützte Spielersuche & Recommender System powered by"
+    " **Gemini & Cosine Similarity**"
 )
 
-# API Key sichern (aus Secrets oder direkt)
+# API Key sichern
 if "GEMINI_API_KEY" in st.secrets:
   GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+else:
+  GEMINI_API_KEY = "AQ.Ab8RN6Iy8TKRCVtE_BUHCalfZZwiqynPV4_TFGo536gX6SW48A"
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 FALLBACK_MODELS = [
@@ -49,9 +52,6 @@ SKILL_MAP = {
 }
 
 
-# ---------------------------------------------------------
-# Feature Engineering (Malocher-Index & ROI / Schnäppchen)
-# ---------------------------------------------------------
 @st.cache_data
 def load_data():
   df = pd.read_csv("FC26_20250921.csv", low_memory=False)
@@ -65,12 +65,10 @@ def load_data():
   ]
   df[skill_columns] = df[skill_columns].fillna(df[skill_columns].mean())
 
-  # Feature Engineering: Malocher-Index (Physis 45%, Defensive 35%, Tempo 20%)
   df["malocher_index"] = np.round(
       (df["physic"] * 0.45 + df["defending"] * 0.35 + df["pace"] * 0.20), 1
   )
 
-  # Feature Engineering: Entwicklungspotenzial & ROI-Faktor
   df["potential_growth"] = df["potential"] - df["overall"]
   val_in_mio = np.maximum(df["value_eur"] / 1_000_000, 0.1)
   df["roi_score"] = np.round(df["potential_growth"] / val_in_mio, 2)
@@ -81,26 +79,21 @@ def load_data():
 df, skill_columns = load_data()
 
 
-# PDF-Generator Hilfsfunktion
 def create_pdf_report(club_name, query, report_text, top_matches_df):
   pdf = FPDF()
   pdf.add_page()
-
   pdf.set_font("Helvetica", "B", 18)
   pdf.cell(0, 10, "MALOCHER SCOUTING - BERICHT", ln=True, align="C")
   pdf.set_font("Helvetica", "I", 12)
   pdf.cell(0, 8, f"Verein: {club_name}", ln=True, align="C")
   pdf.line(10, 30, 200, 30)
   pdf.ln(8)
-
   pdf.set_font("Helvetica", "B", 11)
   pdf.cell(0, 7, f"Anforderungsprofil: {query}", ln=True)
   pdf.ln(4)
-
   pdf.set_font("Helvetica", "B", 13)
   pdf.cell(0, 8, "Chef-Scout Analyse:", ln=True)
   pdf.set_font("Helvetica", "", 10)
-
   clean_text = (
       report_text.replace("**", "")
       .replace("##", "")
@@ -108,12 +101,11 @@ def create_pdf_report(club_name, query, report_text, top_matches_df):
       .decode("latin-1")
   )
   pdf.multi_cell(0, 6, clean_text)
-
   return pdf.output()
 
 
 # ---------------------------------------------------------
-# Sidebar: Hybrid-Suche & Interaktive Regler (Human-in-the-Loop)
+# Sidebar
 # ---------------------------------------------------------
 st.sidebar.header("🎛️ Hybrid-Suche & Feinjustierung")
 st.sidebar.markdown(
@@ -150,32 +142,27 @@ user_prompt = st.text_input(
 )
 
 if st.button("🔍 Scouting-Analyse starten"):
-  # Smart Prompt Guard: Unvollständige/Vage Prompts abfangen
   if len(user_prompt.strip().split()) < 3:
     st.warning(
         "⚠️ Deine Anfrage ist sehr kurz! Bitte gib mindestens eine Position,"
-        " eine Anforderung oder einen Wunschverein an (z. B. 'Schneller Flügel"
-        " für Dortmund')."
+        " eine Anforderung oder einen Wunschverein an."
     )
   else:
-    with st.spinner(
-        "Malocher Scouting analysiert das Vereinsprofil und durchsucht die"
-        " Datenbank..."
-    ):
+    with st.spinner("Malocher Scouting analysiert die Anfrage..."):
       extraction_prompt = f"""
             Du bist ein weltklasse Chef-Scout im Profifußball. Extrahiere die Parameter als JSON aus der Anfrage.
             
             WICHTIG - DYNAMISCHE VEREINSERKENNUNG & IMPLIZITE CLUB-PROFILE:
             Analysiere, welcher Verein in der Anfrage genannt wird. Falls keine konkreten Zahlen genannt werden:
             - Spitzenvereine (Bayern, BVB, Leipzig, Leverkusen): max_value_eur: 50000000, min_overall: 78, min_potential: 82.
-            - Ambitionierte Bundesligisten (Frankfurt, Stuttgart, Wolfsburg, Gladbach, Freiburg): max_value_eur: 15000000, min_potential: 78.
+            - Ambitionierte Bundesligisten (Frankfurt, Stuttgart, Wolfsburg, Gladbach, Freiburg, Augsburg): max_value_eur: 12000000, min_potential: 75.
             - Mittelfeld / 2. Liga / Traditionsvereine (Schalke, Köln, HSV, Hertha, Bochum, Mainz, St. Pauli): max_value_eur: 4000000, max_age: 24, min_potential: 75.
 
             POSITIONSMAPPING (Deutsch/Jargon -> EA FC Englisch):
-            - Malocher / Abräumer / Sechser / ZDM / DM -> 'CDM'
+            - Verteidiger / IV -> 'CB'
+            - Malocher / Abräumer / Sechser / ZDM -> 'CDM'
             - Achter / ZM -> 'CM'
             - Zehner / Spielmacher / ZOM -> 'CAM'
-            - Innenverteidiger / IV -> 'CB'
             - Außenverteidiger / LV / RV -> 'LB' bzw. 'RB'
             - Stürmer / MS / Knipser -> 'ST'
             - Flügelspieler / LA / RA -> 'LW' bzw. 'RW'
@@ -201,35 +188,46 @@ if st.button("🔍 Scouting-Analyse starten"):
               model=m, contents=extraction_prompt
           )
           raw_text = res.text
-          break
+          if raw_text:
+            break
         except Exception:
           continue
 
       if raw_text:
-        clean_json = (
-            raw_text.strip().replace("```json", "").replace("```", "").strip()
+        try:
+          clean_json = (
+              raw_text.strip()
+              .replace("```json", "")
+              .replace("```", "")
+              .strip()
+          )
+          params = json.loads(clean_json)
+          st.session_state["params"] = params
+          st.session_state["user_prompt"] = user_prompt
+          st.session_state["chat_history"] = []
+        except Exception as e:
+          st.error(f"Fehler beim Parsen der Kriterien: {e}")
+      else:
+        st.error(
+            "Verbindung zum KI-Modell fehlgeschlagen. Bitte erneut auf"
+            " 'Scouting-Analyse starten' klicken."
         )
-        params = json.loads(clean_json)
 
-        st.session_state["params"] = params
-        st.session_state["user_prompt"] = user_prompt
-        st.session_state["chat_history"] = []  # Chat-Verlauf zurücksetzen
-
+# Auswertung anzeigen, wenn Kriterien im State sind
 if "params" in st.session_state:
   params = st.session_state["params"]
   user_prompt = st.session_state["user_prompt"]
 
-  st.write("**Extrahierte Suchkriterien (Inkl. KI & Sidebar-Filter):**")
+  st.write("**Extrahierte Suchkriterien:**")
   st.json(params)
 
-  # Datenbank-Filterung
   filtered_df = df.copy()
 
   max_val = min(
       params.get("max_value_eur") or 999_999_999, override_max_value
   )
   max_a = min(params.get("max_age") or 99, override_max_age)
-  min_pot = max(params.get("min_potential") or 0, override_min_potential)
+  min_pot = min(params.get("min_potential") or 0, override_min_potential)
 
   filtered_df = filtered_df[
       (filtered_df["value_eur"] <= max_val)
@@ -263,8 +261,8 @@ if "params" in st.session_state:
 
   if filtered_df.empty:
     st.warning(
-        "Keine Spieler gefunden, die alle Kriterien erfüllen! Locker die Filter"
-        " in der Sidebar etwas auf."
+        "Keine Spieler gefunden, die alle Kriterien erfüllen! Lockere die"
+        " Regler in der Sidebar (z. B. Mindest-Potenzial oder Marktwert)."
     )
   else:
     similar_to = params.get("similar_to_player")
@@ -326,12 +324,13 @@ if "params" in st.session_state:
 
     detected_club = params.get("club_name", "Verein")
 
-    # Highlighting Top Player mit Metrik-Karten
     top_player = top_matches.iloc[0]
     st.markdown("### 🏆 Top-Empfehlung")
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Spieler", top_player["short_name"])
-    m2.metric("OVR / POT", f"{top_player['overall']} / {top_player['potential']}")
+    m2.metric(
+        "OVR / POT", f"{top_player['overall']} / {top_player['potential']}"
+    )
     m3.metric("⚒️ Malocher-Index", f"{top_player['malocher_index']} %")
     m4.metric("💎 ROI-Faktor", f"{top_player['roi_score']}")
 
@@ -343,7 +342,6 @@ if "params" in st.session_state:
 
     with col2:
       st.subheader("🥊 Direct Head-to-Head Spieler-Vergleich")
-
       player_list = top_matches["short_name"].tolist()
       p1_selected = st.selectbox("Spieler 1 auswählen:", player_list, index=0)
       p2_selected = st.selectbox(
@@ -385,9 +383,6 @@ if "params" in st.session_state:
         plt.legend(loc="lower right")
         st.pyplot(fig)
 
-    # ---------------------------------------------------------
-    # Scouting-Bericht & PDF-Download
-    # ---------------------------------------------------------
     st.subheader(f"📝 Scouting-Bericht für {detected_club}")
     report_prompt = f"""
         Du bist Chef-Scout bei {detected_club}. 
@@ -405,14 +400,13 @@ if "params" in st.session_state:
         rep_text = client.models.generate_content(
             model=m, contents=report_prompt
         ).text
-        break
+        if rep_text:
+          break
       except Exception:
         continue
 
     if rep_text:
       st.markdown(rep_text)
-
-      # PDF Export Button
       try:
         pdf_bytes = create_pdf_report(
             detected_club, user_prompt, rep_text, top_matches
@@ -423,18 +417,11 @@ if "params" in st.session_state:
             file_name=f"Scouting_Bericht_{detected_club}.pdf",
             mime="application/pdf",
         )
-      except Exception as e:
-        st.info("PDF-Export steht bereit.")
+      except Exception:
+        pass
 
-    # ---------------------------------------------------------
-    # Interaktiver KI-Scout Chatbot (Interaktive Rückfragen)
-    # ---------------------------------------------------------
     st.divider()
     st.subheader("💬 Frage den Chef-Scout")
-    st.markdown(
-        "Stelle direkte Detailfragen zu den gefundenen Spielern oder taktischen"
-        " Eignungen:"
-    )
 
     if "chat_history" not in st.session_state:
       st.session_state["chat_history"] = []
@@ -449,7 +436,6 @@ if "params" in st.session_state:
 
     if user_question:
       st.chat_message("user").write(user_question)
-
       chat_prompt = f"""
             Du bist der Chef-Scout von {detected_club}.
             Der Manager stellt dir eine Nachfrage zu den aktuell vorgeschlagenen Kandidaten:
@@ -459,14 +445,14 @@ if "params" in st.session_state:
             
             Antworte kurz, präzise, fachlich kompetent und praxisnah.
             """
-
       chat_reply = None
       for m in FALLBACK_MODELS:
         try:
           chat_reply = client.models.generate_content(
               model=m, contents=chat_prompt
           ).text
-          break
+          if chat_reply:
+            break
         except Exception:
           continue
 
