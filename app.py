@@ -10,7 +10,7 @@ from sklearn.preprocessing import MinMaxScaler
 import streamlit as st
 
 # ---------------------------------------------------------
-# Page Config & Custom Styling
+# Page Config & Custom Styling (Königsblau & Dark Theme)
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="Malocher Scouting ⚒️", layout="wide", page_icon="⚒️"
@@ -29,11 +29,9 @@ st.markdown(
     " **Gemini & Cosine Similarity**"
 )
 
-# API Key sichern
+# API Key sichern (aus Secrets oder direkt)
 if "GEMINI_API_KEY" in st.secrets:
   GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-else:
-  GEMINI_API_KEY = "test"
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 FALLBACK_MODELS = [
@@ -52,6 +50,9 @@ SKILL_MAP = {
 }
 
 
+# ---------------------------------------------------------
+# Feature Engineering (Malocher-Index & ROI / Schnäppchen)
+# ---------------------------------------------------------
 @st.cache_data
 def load_data():
   df = pd.read_csv("FC26_20250921.csv", low_memory=False)
@@ -65,10 +66,17 @@ def load_data():
   ]
   df[skill_columns] = df[skill_columns].fillna(df[skill_columns].mean())
 
+  if "long_name" not in df.columns:
+    df["long_name"] = df["short_name"]
+  else:
+    df["long_name"] = df["long_name"].fillna(df["short_name"])
+
+  # Feature Engineering: Malocher-Index (Physis 45%, Defensive 35%, Tempo 20%)
   df["malocher_index"] = np.round(
       (df["physic"] * 0.45 + df["defending"] * 0.35 + df["pace"] * 0.20), 1
   )
 
+  # Feature Engineering: Entwicklungspotenzial & ROI-Faktor
   df["potential_growth"] = df["potential"] - df["overall"]
   val_in_mio = np.maximum(df["value_eur"] / 1_000_000, 0.1)
   df["roi_score"] = np.round(df["potential_growth"] / val_in_mio, 2)
@@ -79,6 +87,7 @@ def load_data():
 df, skill_columns = load_data()
 
 
+# PDF-Generator Hilfsfunktion
 def create_pdf_report(club_name, query, report_text, top_matches_df):
   pdf = FPDF()
   pdf.add_page()
@@ -105,7 +114,7 @@ def create_pdf_report(club_name, query, report_text, top_matches_df):
 
 
 # ---------------------------------------------------------
-# Sidebar
+# Sidebar: Hybrid-Suche & Interaktive Regler (Human-in-the-Loop)
 # ---------------------------------------------------------
 st.sidebar.header("🎛️ Hybrid-Suche & Feinjustierung")
 st.sidebar.markdown(
@@ -148,7 +157,10 @@ if st.button("🔍 Scouting-Analyse starten"):
         " eine Anforderung oder einen Wunschverein an."
     )
   else:
-    with st.spinner("Malocher Scouting analysiert die Anfrage..."):
+    with st.spinner(
+        "Malocher Scouting analysiert das Vereinsprofil und durchsucht die"
+        " Datenbank..."
+    ):
       extraction_prompt = f"""
             Du bist ein weltklasse Chef-Scout im Profifußball. Extrahiere die Parameter als JSON aus der Anfrage.
             
@@ -270,13 +282,13 @@ if "params" in st.session_state:
 
     if similar_to:
       match = df[
-          df["short_name"].str.contains(similar_to, case=False, na=False)
+          df["long_name"].str.contains(similar_to, case=False, na=False)
       ]
       if not match.empty:
         target_player = match.sort_values(by="overall", ascending=False).iloc[
             [0]
         ]
-        target_name = target_player.iloc[0]["short_name"]
+        target_name = target_player.iloc[0]["long_name"]
 
         scaler = MinMaxScaler()
         scaled_skills = scaler.fit_transform(filtered_df[skill_columns])
@@ -285,7 +297,7 @@ if "params" in st.session_state:
         sims = cosine_similarity(scaled_skills, scaled_target).flatten()
         filtered_df["match_score_%"] = np.round(sims * 100, 1)
         results = filtered_df[
-            filtered_df["short_name"] != target_name
+            filtered_df["long_name"] != target_name
         ].sort_values(by="match_score_%", ascending=False)
       else:
         filtered_df["match_score_%"] = "-"
@@ -298,8 +310,9 @@ if "params" in st.session_state:
           by=["potential", "overall"], ascending=False
       )
 
+    # Exakt 3 Top-Treffer
     top_matches = results[[
-        "short_name",
+        "long_name",
         "age",
         "player_positions",
         "overall",
@@ -308,10 +321,10 @@ if "params" in st.session_state:
         "malocher_index",
         "roi_score",
         "match_score_%",
-    ]].head(5)
+    ]].head(3)
 
     display_matches = top_matches.rename(columns={
-        "short_name": "Name",
+        "long_name": "Vollständiger Name",
         "age": "Alter",
         "player_positions": "Positionen",
         "overall": "Gesamtstärke (OVR)",
@@ -321,13 +334,14 @@ if "params" in st.session_state:
         "roi_score": "💎 ROI-Faktor",
         "match_score_%": "Match-Score (%)",
     })
+    display_matches.index.name = "Player ID"
 
     detected_club = params.get("club_name", "Verein")
 
     top_player = top_matches.iloc[0]
     st.markdown("### 🏆 Top-Empfehlung")
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Spieler", top_player["short_name"])
+    m1.metric("Spieler", top_player["long_name"])
     m2.metric(
         "OVR / POT", f"{top_player['overall']} / {top_player['potential']}"
     )
@@ -337,12 +351,20 @@ if "params" in st.session_state:
     col1, col2 = st.columns([1.2, 1])
 
     with col1:
-      st.subheader(f"📋 Top 5 Treffer für {detected_club}")
+      st.subheader(f"📋 Top 3 Treffer für {detected_club}")
       st.dataframe(display_matches, use_container_width=True)
+
+      st.markdown(
+          """
+    **💡 Kennzahlen-Erklärung:**
+    **💎 ROI-Faktor (Return on Investment):** Quotient aus dem verbleibenden Entwicklungspotenzial (Potenzial minus aktuelle Stärke) und dem Marktwert in Millionen Euro. Höhere Werte signalisieren ein starkes Preis-Leistungs-Verhältnis bzw. hohes Talent zu geringen Kosten.
+        """,
+      unsafe_allow_html=True,
+      )
 
     with col2:
       st.subheader("🥊 Direct Head-to-Head Spieler-Vergleich")
-      player_list = top_matches["short_name"].tolist()
+      player_list = top_matches["long_name"].tolist()
       p1_selected = st.selectbox("Spieler 1 auswählen:", player_list, index=0)
       p2_selected = st.selectbox(
           "Spieler 2 auswählen:",
@@ -351,8 +373,8 @@ if "params" in st.session_state:
       )
 
       if p1_selected and p2_selected:
-        p1_data = df[df["short_name"] == p1_selected].iloc[0]
-        p2_data = df[df["short_name"] == p2_selected].iloc[0]
+        p1_data = df[df["long_name"] == p1_selected].iloc[0]
+        p2_data = df[df["long_name"] == p2_selected].iloc[0]
 
         german_skill_labels = [
             SKILL_MAP[col].upper() for col in skill_columns
@@ -387,10 +409,10 @@ if "params" in st.session_state:
     report_prompt = f"""
         Du bist Chef-Scout bei {detected_club}. 
         Anfrage des Managements: '{user_prompt}'. 
-        
+    
         Hier sind die datenbasierten Top-Kandidaten:
         {top_matches.to_string()}
-        
+    
         Schreibe einen professionellen, fundierten Scouting-Bericht direkt an die Vereinsführung.
         Gehe explizit auf den ⚒️ Malocher-Index (Physis/Einsatz) und den 💎 ROI-Faktor (Entwicklungspotenzial) ein.
         """
@@ -420,42 +442,42 @@ if "params" in st.session_state:
       except Exception:
         pass
 
-    st.divider()
-    st.subheader("💬 Frage den Chef-Scout")
+st.divider()
+st.subheader("💬 Frage den Chef-Scout")
 
-    if "chat_history" not in st.session_state:
-      st.session_state["chat_history"] = []
+if "chat_history" not in st.session_state:
+  st.session_state["chat_history"] = []
 
-    for q, a in st.session_state["chat_history"]:
-      st.chat_message("user").write(q)
-      st.chat_message("assistant").write(a)
+for q, a in st.session_state["chat_history"]:
+  st.chat_message("user").write(q)
+  st.chat_message("assistant").write(a)
 
-    user_question = st.chat_input(
-        "z. B. Warum ist der Top-Treffer besser für Konterfußball geeignet?"
-    )
+user_question = st.chat_input(
+    "z. B. Warum ist der Top-Treffer besser für Konterfußball geeignet?"
+)
 
-    if user_question:
-      st.chat_message("user").write(user_question)
-      chat_prompt = f"""
-            Du bist der Chef-Scout von {detected_club}.
-            Der Manager stellt dir eine Nachfrage zu den aktuell vorgeschlagenen Kandidaten:
-            Top-Kandidaten: {top_matches.to_string()}
-            
-            Frage des Managers: '{user_question}'
-            
-            Antworte kurz, präzise, fachlich kompetent und praxisnah.
-            """
-      chat_reply = None
-      for m in FALLBACK_MODELS:
-        try:
-          chat_reply = client.models.generate_content(
-              model=m, contents=chat_prompt
-          ).text
-          if chat_reply:
-            break
-        except Exception:
-          continue
-
+if user_question:
+  st.chat_message("user").write(user_question)
+  chat_prompt = f"""
+        Du bist der Chef-Scout von {detected_club}.
+        Der Manager stellt dir eine Nachfrage zu den aktuell vorgeschlagenen Kandidaten:
+        Top-Kandidaten: {top_matches.to_string()}
+        
+        Frage des Managers: '{user_question}'
+        
+        Antworte kurz, präzise, fachlich kompetent und praxisnah.
+        """
+  chat_reply = None
+  for m in FALLBACK_MODELS:
+    try:
+      chat_reply = client.models.generate_content(
+          model=m, contents=chat_prompt
+      ).text
       if chat_reply:
-        st.chat_message("assistant").write(chat_reply)
-        st.session_state["chat_history"].append((user_question, chat_reply))
+        break
+    except Exception:
+      continue
+
+  if chat_reply:
+    st.chat_message("assistant").write(chat_reply)
+    st.session_state["chat_history"].append((user_question, chat_reply))
